@@ -1,0 +1,3 @@
+/Users/eliasefrainmanchegonavarro/Documents/parcial_videojuegos/build/CMakeFiles/AngryBirdsOpenCV.dir
+/Users/eliasefrainmanchegonavarro/Documents/parcial_videojuegos/build/CMakeFiles/edit_cache.dir
+/Users/eliasefrainmanchegonavarro/Documents/parcial_videojuegos/build/CMakeFiles/rebuild_cache.dir
