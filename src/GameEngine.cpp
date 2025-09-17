@@ -107,7 +107,7 @@ void GameEngine::update(float deltaTime) {
                 for (auto& bird : birds) {
                     if (bird->isLaunched() && bird->isActive) {
                         float speed = std::sqrt(bird->velocity.x * bird->velocity.x + bird->velocity.y * bird->velocity.y);
-                        if (speed > 5.0f) {  // Reduced from 10.0f to 5.0f for better control
+                        if (speed > 2.0f) {  // Further reduced from 5.0f to 2.0f for even longer visible flight
                             birdStopped = false;
                             break;
                         }
@@ -178,9 +178,9 @@ void GameEngine::render() {
             // Draw trajectory preview when aiming
             if (currentState == GameState::AIMING && slingshot->getIsPulling()) {
                 cv::Point2f startPos = slingshot->getPullPosition();
-                cv::Point2f velocity = (slingshot->getBasePosition() - startPos) * 2.0f;  // Reduced from 4.0f to 2.0f to match new physics
+                cv::Point2f velocity = (slingshot->getBasePosition() - startPos) * 1.2f;  // Adjusted to match new slower physics
                 
-                auto trajectoryPoints = physics->getTrajectoryPoints(startPos, velocity, 20);  // More points for better preview
+                auto trajectoryPoints = physics->getTrajectoryPoints(startPos, velocity, 25);  // More points for longer, slower trajectory
                 for (size_t i = 1; i < trajectoryPoints.size(); ++i) {
                     cv::circle(canvas, cv::Point(trajectoryPoints[i].x, trajectoryPoints[i].y), 
                               3, cv::Scalar(255, 255, 0), -1);  // Yellow dots
@@ -457,7 +457,7 @@ void GameEngine::checkLevelComplete() {
         }
         if (bird->isActive && bird->isLaunched()) {
             float speed = std::sqrt(bird->velocity.x * bird->velocity.x + bird->velocity.y * bird->velocity.y);
-            if (speed > 5.0f) {  // Bird is still moving
+            if (speed > 2.0f) {  // Bird is still moving (reduced for longer flight visibility)
                 hasActiveBirds = true;
             }
         }

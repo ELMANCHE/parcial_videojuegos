@@ -253,8 +253,8 @@ cv::Point2f Slingshot::releaseBird() {
     cv::Point2f launchVector = basePosition - pullPosition;
     float strength = std::sqrt(launchVector.x * launchVector.x + launchVector.y * launchVector.y);
     
-    // Scale velocity based on pull strength (reduced from 400 to 200 for better control)
-    cv::Point2f velocity = launchVector * (strength / maxPullDistance) * 200.0f;  // Max velocity of 200 pixels/s
+    // Scale velocity based on pull strength (reduced to 120 for much slower, more visible flight)
+    cv::Point2f velocity = launchVector * (strength / maxPullDistance) * 120.0f;  // Max velocity of 120 pixels/s
     
     currentBird->launch(velocity);
     currentBird = nullptr;

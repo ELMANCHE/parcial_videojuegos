@@ -19,8 +19,8 @@ struct PhysicsObject {
 
 class Physics {
 private:
-    static constexpr float GRAVITY = 400.0f;  // pixels/s^2
-    static constexpr float AIR_RESISTANCE = 0.98f;
+    static constexpr float GRAVITY = 200.0f;  // pixels/s^2 (reduced from 400 for slower, more visible flight)
+    static constexpr float AIR_RESISTANCE = 0.99f; // Reduced air resistance for smoother flight
     static constexpr float GROUND_Y = 700.0f;
     static constexpr float BOUNCE_DAMPING = 0.6f;
     
