@@ -1,6 +1,8 @@
-# 🐦 Angry Birds OpenCV - Parcial Videojuegos
+# parcial_videojuegos# 🐦 Angry Birds OpenCV - Parcial Videojuegos
 
-Un juego completo tipo Angry Birds implementado en **C++** usando la librería **OpenCV** para gráficos y física.
+
+
+Proyecto limpio - listo para empezar de nuevo.Un juego completo tipo Angry Birds implementado en **C++** usando la librería **OpenCV** para gráficos y física.
 
 ## 📋 Tabla de Contenidos
 - [🚀 Inicio Rápido](#inicio-rápido)

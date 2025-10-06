@@ -1,0 +1,35 @@
+# Archivos ejecutables compilados
+arena
+juegoroblox
+
+# Archivos objeto
+*.o
+*.obj
+
+# Archivos de sistema macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Archivos temporales de VSCode
+.vscode/
+*.code-workspace
+
+# Archivos de compilación
+*.out
+*.exe
+*.app
+
+# Archivos de depuración
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Archivos de caché
+__pycache__/
+*.py[cod]
+*$py.class
