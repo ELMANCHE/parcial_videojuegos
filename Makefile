@@ -1,3 +1,6 @@
+# Ejecutable unificado menú + juego
+squid: primeravista.cpp arena_isometrica.cpp
+	$(CXX) $(CXXFLAGS) primeravista.cpp arena_isometrica.cpp -o squid $(OPENCV_FLAGS)
 # Makefile para compilar juegos 3D con OpenCV
 
 CXX = g++
@@ -5,7 +8,10 @@ CXXFLAGS = -std=c++17 -Wall
 OPENCV_FLAGS = `pkg-config --cflags --libs opencv4`
 
 # Targets
-all: juegoroblox juego3d snake3d arena
+
+all: juegoroblox juego3d snake3d arena menu
+menu: primeravista.cpp arena
+	$(CXX) $(CXXFLAGS) primeravista.cpp -o menu $(OPENCV_FLAGS)
 
 juegoroblox: juegoroblox.cpp
 	$(CXX) $(CXXFLAGS) juegoroblox.cpp -o juegoroblox $(OPENCV_FLAGS)

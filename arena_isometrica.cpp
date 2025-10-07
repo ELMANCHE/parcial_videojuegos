@@ -11,10 +11,21 @@ struct V3 { double x, y, z; };
 
 // Proyección isométrica
 Point isoProject(V3 p, int w, int h, double zoom) {
-    double screenX = (p.x - p.y) * zoom;
-    double screenY = ((p.x + p.y) * 0.5 - p.z) * zoom;
+    // apply global pan offsets (set via setIsoPan)
+    extern double g_isoPanX, g_isoPanY;
+    double px = p.x - g_isoPanX;
+    double py = p.y - g_isoPanY;
+    double screenX = (px - py) * zoom;
+    double screenY = ((px + py) * 0.5 - p.z) * zoom;
     return Point(w/2 + (int)screenX, h/2 + (int)screenY);
 }
+
+// Global pan offsets used by isoProject
+double g_isoPanX = 0.0;
+double g_isoPanY = 0.0;
+void setIsoPan(double x, double y) { g_isoPanX = x; g_isoPanY = y; }
+// Global zoom used by mouse callback and main
+double zoom = 25.0;
 
 // Estructura para pelotas que caen
 struct Ball {
@@ -128,6 +139,33 @@ struct RobloxPlayer {
         if(pos.y > limite) pos.y = limite;
     }
 };
+
+// Simple global mouse camera control (single view)
+bool g_mousePressed = false;
+int g_lastMouseX = 0, g_lastMouseY = 0;
+// Mouse callback: dragging pans camera (global g_isoPanX/Y), wheel zooms (global zoom)
+void mouseCamCallback(int event, int x, int y, int flags, void* userdata) {
+    (void)userdata;
+    if(event == EVENT_LBUTTONDOWN) {
+        g_mousePressed = true;
+        g_lastMouseX = x; g_lastMouseY = y;
+    } else if(event == EVENT_LBUTTONUP) {
+        g_mousePressed = false;
+    } else if(event == EVENT_MOUSEMOVE && g_mousePressed) {
+        int dx = x - g_lastMouseX;
+        int dy = y - g_lastMouseY;
+        // Convert pixel delta to world units via current zoom
+        double sensitivity = 1.0 / max(1.0, zoom);
+        g_isoPanX += -dx * sensitivity;
+        g_isoPanY += dy * sensitivity;
+        g_lastMouseX = x; g_lastMouseY = y;
+    } else if(event == EVENT_MOUSEWHEEL) {
+        int delta = getMouseWheelDelta(flags);
+        zoom += -delta * 1.0;
+        if(zoom < 5.0) zoom = 5.0;
+        if(zoom > 200.0) zoom = 200.0;
+    }
+}
 
 // Dibujar un cubo 3D isométrico
 void drawCube3D(vector<Face3D>& faces, V3 center, V3 size, Scalar color, int w, int h, double zoom, bool isFrontFace = false) {
@@ -325,7 +363,7 @@ int main() {
     int W = 1200, H = 800;
     Mat img(H, W, CV_8UC3);
     double zoom = 25.0;
-    
+
     double campoSize = 12.0;  // Tamaño del campo
     
     // CARGAR TEXTURAS PARA LAS PAREDES Y PISO
@@ -359,9 +397,13 @@ int main() {
     }
     
     namedWindow("SQUID GAMES", WINDOW_AUTOSIZE);
+    // setup mouse callback for single-view camera control
+    setMouseCallback("SQUID GAMES", mouseCamCallback, nullptr);
     
     while(true) {
-        img.setTo(Scalar(25, 25, 35));
+    img.setTo(Scalar(25, 25, 35));
+
+    // Single-view rendering: all drawing happens into `img` below
         
         // ===== ACTUALIZAR FÍSICAS DE JUGADORES =====
         player1.actualizarFisica();
@@ -684,7 +726,8 @@ int main() {
         putText(img, "ESC para Salir", Point(20, H-20), 
                 FONT_HERSHEY_SIMPLEX, 0.5, Scalar(200, 200, 200), 1);
         
-        imshow("SQUID GAMES", img);
+    // Single view (we removed split rendering). Display img directly.
+    imshow("SQUID GAMES", img);
     }
     
     return 0;
