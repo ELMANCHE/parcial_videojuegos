@@ -3,7 +3,6 @@
 #include <vector>
 #include <algorithm>
 #include <random>
-#include <chrono>
 
 using namespace cv;
 using namespace std;
@@ -28,26 +27,37 @@ void setIsoPan(double x, double y) { g_isoPanX = x; g_isoPanY = y; }
 // Global zoom used by mouse callback and main
 double zoom = 25.0;
 
-// Estructura para pelotas que caen
-struct Ball {
-    V3 pos;
-    V3 vel;
-    double radius;
-    bool alive;
-    Scalar color;
-    bool golpeoReciente;  // Para evitar múltiples golpes seguidos
-    int framesSinGolpe;   // Contador de frames sin golpear
+// Estructura del puente de vidrio (2 columnas × 6 filas)
+struct TileGrid {
+    static const int COLS = 2;
+    static const int ROWS = 6;
+    bool isSafe[ROWS][COLS];  // true = seguro, false = trampa
+    bool isRevealed[ROWS][COLS];  // Si ya se reveló como trampa
     
-    Ball(double x, double y, double z, double r) {
-        pos = {x, y, z};
-        // Velocidad inicial aleatoria
-        vel = {(rand() % 40 - 20) / 100.0, (rand() % 40 - 20) / 100.0, -0.2};
-        radius = r;
-        alive = true;
-        golpeoReciente = false;
-        framesSinGolpe = 0;
-        // Color aleatorio brillante
-        color = Scalar(80 + rand()%176, 80 + rand()%176, 80 + rand()%176);
+    TileGrid() {
+        // Inicializar todo como no revelado
+        for(int r = 0; r < ROWS; r++) {
+            for(int c = 0; c < COLS; c++) {
+                isRevealed[r][c] = false;
+            }
+        }
+        
+        // Para cada fila, elegir aleatoriamente cuál columna es segura
+        srand(time(0));
+        for(int r = 0; r < ROWS; r++) {
+            int safeCol = rand() % COLS;  // 0 o 1
+            isSafe[r][0] = (safeCol == 0);
+            isSafe[r][1] = (safeCol == 1);
+        }
+    }
+    
+    bool checkTile(int row, int col) {
+        if(row < 0 || row >= ROWS || col < 0 || col >= COLS) return false;
+        
+        // Revelar el cuadro
+        isRevealed[row][col] = true;
+        
+        return isSafe[row][col];
     }
 };
 
@@ -70,17 +80,28 @@ struct RobloxPlayer {
     bool muerto;         // Si el jugador está muerto
     int framesDesdeRespawn;  // Frames desde que murió
     V3 posicionMuerte;   // Posición donde murió
+    int gridRow;         // Fila actual en el grid (0-5)
+    int gridCol;         // Columna actual en el grid (0-1)
+    bool enMovimiento;   // Para animar el movimiento
+    V3 targetPos;        // Posición objetivo del movimiento
+    int framesMovimiento;
     Scalar colorCabeza, colorTorso, colorBrazo, colorPierna;
     
-    RobloxPlayer(double x, double y, int playerNum) {
-        pos = {x, y, 0};
+    RobloxPlayer(double x, double y, int playerNum, int startCol) {
+        double tileHeight = 0.5;  // Altura de las tiles (actualizado)
+        pos = {x, y, tileHeight + 0.4};  // Jugador SOBRE la tile desde el inicio
         velZ = 0;
         enSuelo = true;
-        speed = 0.50;  // Velocidad aumentada para movimiento más rápido
-        vida = 100;  // Vida inicial
+        speed = 0.50;
+        vida = 100;
         this->playerNum = playerNum;
         muerto = false;
         framesDesdeRespawn = 0;
+        gridRow = 0;  // Empiezan en la fila 0
+        gridCol = startCol;  // Cada jugador en una columna diferente
+        enMovimiento = false;
+        framesMovimiento = 0;
+        targetPos = pos;
         
         if(playerNum == 1) {
             colorCabeza = Scalar(80, 220, 255);
@@ -109,35 +130,62 @@ struct RobloxPlayer {
         return vida > 0 && !muerto;
     }
     
-    void saltar() {
-        if(enSuelo) {
-            velZ = 0.3;  // Impulso inicial del salto
-            enSuelo = false;
+    // Intentar moverse a una casilla del grid
+    bool intentarMovimiento(int nuevaFila, int nuevaCol, TileGrid& grid) {
+        // Validar que el movimiento es válido
+        if(muerto || enMovimiento) return false;
+        if(nuevaCol < 0 || nuevaCol >= TileGrid::COLS) return false;
+        if(nuevaFila < 0 || nuevaFila >= TileGrid::ROWS) return false;
+        
+        // Solo permitir avanzar hacia adelante (no retroceder)
+        if(nuevaFila <= gridRow) return false;
+        
+        // Solo permitir movimiento a fila adyacente
+        if(nuevaFila > gridRow + 1) return false;
+        
+        // Iniciar movimiento
+        gridRow = nuevaFila;
+        gridCol = nuevaCol;
+        
+        // Convertir posición del grid a coordenadas del mundo
+        // Grid centrado en Y=0, cada tile es 3 unidades
+        double gridSpacing = 3.0;
+        double offsetX = -1.5; // Centrar el grid de 2 columnas
+        double tileHeight = 0.5; // Altura de las tiles sobre el piso negro (actualizado)
+        targetPos.x = offsetX + gridCol * gridSpacing;
+        targetPos.y = -9.0 + gridRow * gridSpacing; // Grid empieza en Y=-9
+        targetPos.z = tileHeight + 0.4;  // Jugador SOBRE la tile
+        
+        enMovimiento = true;
+        framesMovimiento = 0;
+        
+        // Verificar si es una trampa
+        bool esSafe = grid.checkTile(gridRow, gridCol);
+        if(!esSafe) {
+            vida = 0;
+            muerto = true;
+            posicionMuerte = targetPos;
         }
+        
+        return true;
     }
     
-    void actualizarFisica() {
-        // Aplicar gravedad
-        velZ -= 0.02;  // Gravedad
-        pos.z += velZ;
+    void actualizarMovimiento() {
+        if(!enMovimiento) return;
         
-        // Colisión con el suelo
-        if(pos.z <= 0) {
-            pos.z = 0;
-            velZ = 0;
-            enSuelo = true;
+        framesMovimiento++;
+        float t = framesMovimiento / 20.0f; // 20 frames para completar el movimiento
+        if(t > 1.0f) t = 1.0f;
+        
+        // Interpolación suave
+        pos.x = pos.x + (targetPos.x - pos.x) * 0.2;
+        pos.y = pos.y + (targetPos.y - pos.y) * 0.2;
+        pos.z = pos.z + (targetPos.z - pos.z) * 0.2;  // Interpolar también Z
+        
+        if(framesMovimiento >= 20) {
+            pos = targetPos;
+            enMovimiento = false;
         }
-    }
-    
-    void mover(double dx, double dy, double limite) {
-        pos.x += dx * speed;
-        pos.y += dy * speed;
-        
-        // Limitar dentro del campo
-        if(pos.x < -limite) pos.x = -limite;
-        if(pos.x > limite) pos.x = limite;
-        if(pos.y < -limite) pos.y = -limite;
-        if(pos.y > limite) pos.y = limite;
     }
 };
 
@@ -233,24 +281,6 @@ void renderRobloxPlayer(vector<Face3D>& faces, const RobloxPlayer& player, int w
     
     // CABEZA
     drawCube3D(faces, {base.x, base.y, base.z + 2.7}, {0.8, 0.8, 0.8}, player.colorCabeza, w, h, zoom, true);
-}
-
-// Dibujar pelota en isométrico
-void drawBall(Mat& img, const Ball& ball, int w, int h, double zoom) {
-    // Proyectar centro de la pelota
-    Point center = isoProject(ball.pos, w, h, zoom);
-    
-    // Radio en pantalla (aproximado)
-    int screenRadius = (int)(ball.radius * zoom);
-    if(screenRadius < 2) screenRadius = 2;
-    
-    // Dibujar pelota con degradado simple
-    circle(img, center, screenRadius, ball.color, -1);
-    circle(img, center, screenRadius, Scalar(0, 0, 0), 2);  // Borde negro
-    
-    // Highlight para efecto 3D
-    Point highlight(center.x - screenRadius/3, center.y - screenRadius/3);
-    circle(img, highlight, screenRadius/3, Scalar(255, 255, 255), -1);
 }
 
 // Dibujar barra de vida sobre la cabeza del personaje
@@ -367,196 +397,46 @@ int main() {
 
     double campoSize = 12.0;  // Tamaño del campo
     
-    // CARGAR TEXTURAS PARA LAS PAREDES Y PISO
-    Mat texturaPared1 = imread("sources/images-5.jpeg");
-    Mat texturaPared2 = imread("sources/images-6.jpeg");
-    Mat texturaPiso = imread("sources/piso.jpeg");
+    // Cargar textura de vidrio para los tiles del puente
+    Mat texturaVidrio = imread("sources/vidrio.jpg");
+    if(texturaVidrio.empty()) {
+        cerr << "Error: No se pudo cargar sources/vidrio.jpg" << endl;
+    }
+    
+    // CARGAR TEXTURAS PARA LAS PAREDES
+    Mat texturaPared1 = imread("sources/glass1.jpg");      // Pared derecha
+    Mat texturaPared2 = imread("sources/glass2.jpeg");     // Pared izquierda
     
     if(texturaPared1.empty()) {
-        cout << "Error: No se pudo cargar sources/images-5.jpeg" << endl;
+        cerr << "Error: No se pudo cargar sources/glass1.jpg" << endl;
     }
     if(texturaPared2.empty()) {
-        cout << "Error: No se pudo cargar sources/images-6.jpeg" << endl;
-    }
-    if(texturaPiso.empty()) {
-        cout << "Error: No se pudo cargar sources/piso.jpeg" << endl;
+        cerr << "Error: No se pudo cargar sources/glass2.jpeg" << endl;
     }
     
-    // CREAR 2 JUGADORES
-    RobloxPlayer player1(-4.0, 0.0, 1);
-    RobloxPlayer player2(4.0, 0.0, 2);
+    // Crear el grid de trampas del puente de vidrio
+    TileGrid grid;
     
-    // CREAR 30 PELOTAS cayendo del cielo
-    vector<Ball> balls;
-    srand(time(0));
-    for(int i = 0; i < 30; i++) {
-        double x = -10.0 + (rand() % 200) / 10.0;  // Entre -10 y 10
-        double y = -10.0 + (rand() % 200) / 10.0;
-        double z = 20.0 + (rand() % 150) / 10.0;  // Caen desde arriba (20-35)
-        double r = 0.25 + (rand() % 4) * 0.08;    // Radios variados
-        balls.push_back(Ball(x, y, z, r));
-    }
+    // CREAR 2 JUGADORES (empiezan en columna 0 y 1, fila 0)
+    RobloxPlayer player1(-1.5, -9.0, 1, 0);  // Columna izquierda
+    RobloxPlayer player2(1.5, -9.0, 2, 1);   // Columna derecha
     
-    namedWindow("SQUID GAMES", WINDOW_AUTOSIZE);
+    namedWindow("SQUID GAMES - Glass Bridge", WINDOW_AUTOSIZE);
     // setup mouse callback for single-view camera control
-    setMouseCallback("SQUID GAMES", mouseCamCallback, nullptr);
-    
-    // Timer de 30 segundos
-    auto tiempoInicio = chrono::steady_clock::now();
-    int tiempoLimite = 30; // segundos
+    setMouseCallback("SQUID GAMES - Glass Bridge", mouseCamCallback, nullptr);
     
     while(true) {
     img.setTo(Scalar(25, 25, 35));
 
     // Single-view rendering: all drawing happens into `img` below
         
-        // ===== CALCULAR TIEMPO RESTANTE =====
-        auto tiempoActual = chrono::steady_clock::now();
-        auto tiempoTranscurrido = chrono::duration_cast<chrono::seconds>(tiempoActual - tiempoInicio).count();
-        int tiempoRestante = tiempoLimite - tiempoTranscurrido;
-        
-        // Si se acaba el tiempo, verificar sobrevivientes
-        if(tiempoRestante <= 0) {
-            tiempoRestante = 0;
-            // Si hay al menos un sobreviviente, ir a arena2
-            if(player1.estaVivo() || player2.estaVivo()) {
-                putText(img, "TIEMPO TERMINADO!", Point(W/2 - 200, H/2 - 50), 
-                        FONT_HERSHEY_COMPLEX, 1.5, Scalar(0, 255, 255), 3);
-                putText(img, "SIGUIENTE NIVEL...", Point(W/2 - 200, H/2 + 50), 
-                        FONT_HERSHEY_COMPLEX, 1.2, Scalar(255, 255, 255), 2);
-                imshow("SQUID GAMES", img);
-                waitKey(2000);
-                destroyAllWindows();
-                system("./arena2");
-                return 0;
-            } else {
-                // Ambos muertos, ir a game over
-                waitKey(2000);
-                destroyAllWindows();
-                system("./end");
-                return 0;
-            }
-        }
-        
-        // ===== ACTUALIZAR FÍSICAS DE JUGADORES =====
-        player1.actualizarFisica();
-        player2.actualizarFisica();
+        // ===== ACTUALIZAR MOVIMIENTOS DE JUGADORES =====
+        player1.actualizarMovimiento();
+        player2.actualizarMovimiento();
         
         // Actualizar contador de frames desde muerte
         if(player1.muerto) player1.framesDesdeRespawn++;
         if(player2.muerto) player2.framesDesdeRespawn++;
-        
-        // ===== ACTUALIZAR FÍSICAS DE PELOTAS =====
-        for(auto& ball : balls) {
-            if(!ball.alive) continue;
-            
-            // Actualizar contador de frames sin golpe
-            if(ball.golpeoReciente) {
-                ball.framesSinGolpe++;
-                if(ball.framesSinGolpe > 30) {  // 30 frames = ~1 segundo
-                    ball.golpeoReciente = false;
-                    ball.framesSinGolpe = 0;
-                }
-            }
-            
-            // Actualizar posición
-            ball.pos.x += ball.vel.x;
-            ball.pos.y += ball.vel.y;
-            ball.pos.z += ball.vel.z;
-            
-            // Aplicar gravedad
-            ball.vel.z -= 0.018;  // Gravedad más fuerte
-            
-            // Rebotes en los límites del campo con más energía
-            double minX = -campoSize + ball.radius;
-            double maxX = campoSize - ball.radius;
-            double minY = -campoSize + ball.radius;
-            double maxY = campoSize - ball.radius;
-            
-            if(ball.pos.x < minX) { 
-                ball.pos.x = minX; 
-                ball.vel.x *= -0.9;  // Rebote con más energía
-                ball.vel.y += (rand() % 20 - 10) / 100.0;  // Variación aleatoria
-            }
-            if(ball.pos.x > maxX) { 
-                ball.pos.x = maxX; 
-                ball.vel.x *= -0.9; 
-                ball.vel.y += (rand() % 20 - 10) / 100.0;
-            }
-            if(ball.pos.y < minY) { 
-                ball.pos.y = minY; 
-                ball.vel.y *= -0.9; 
-                ball.vel.x += (rand() % 20 - 10) / 100.0;
-            }
-            if(ball.pos.y > maxY) { 
-                ball.pos.y = maxY; 
-                ball.vel.y *= -0.9; 
-                ball.vel.x += (rand() % 20 - 10) / 100.0;
-            }
-            
-            // Rebote en el suelo con más energía
-            if(ball.pos.z <= ball.radius) {
-                ball.pos.z = ball.radius;
-                ball.vel.z *= -0.85;  // Rebote con más energía
-                ball.vel.x *= 0.95;   // Menos fricción
-                ball.vel.y *= 0.95;
-                
-                // Agregar variación aleatoria al rebotar
-                ball.vel.x += (rand() % 20 - 10) / 100.0;
-                ball.vel.y += (rand() % 20 - 10) / 100.0;
-                
-                // Si está casi quieta, darle un impulso
-                if(abs(ball.vel.z) < 0.08 && abs(ball.vel.x) < 0.05 && abs(ball.vel.y) < 0.05) {
-                    ball.vel.z = 0.3 + (rand() % 20) / 100.0;  // Impulso aleatorio
-                    ball.vel.x = (rand() % 40 - 20) / 50.0;
-                    ball.vel.y = (rand() % 40 - 20) / 50.0;
-                }
-            }
-            
-            // Límite de altura para que no salgan volando
-            if(ball.pos.z > 30.0) {
-                ball.pos.z = 30.0;
-                ball.vel.z *= -0.5;
-            }
-        }
-        
-        // ===== DETECTAR COLISIONES PELOTA-JUGADOR =====
-        for(auto& ball : balls) {
-            if(!ball.alive || ball.golpeoReciente) continue;
-            
-            // Colisión con jugador 1
-            if(player1.estaVivo()) {
-                double dx = ball.pos.x - player1.pos.x;
-                double dy = ball.pos.y - player1.pos.y;
-                double dz = ball.pos.z - (player1.pos.z + 1.5);  // Centro del personaje
-                double distancia = sqrt(dx*dx + dy*dy + dz*dz);
-                
-                if(distancia < (ball.radius + 1.2)) {  // Radio de colisión del personaje
-                    player1.recibirDanio(10);
-                    ball.golpeoReciente = true;
-                    // Rebotar pelota en dirección opuesta
-                    ball.vel.x = -dx * 0.3;
-                    ball.vel.y = -dy * 0.3;
-                    ball.vel.z = abs(ball.vel.z) * 0.5 + 0.2;
-                }
-            }
-            
-            // Colisión con jugador 2
-            if(player2.estaVivo()) {
-                double dx = ball.pos.x - player2.pos.x;
-                double dy = ball.pos.y - player2.pos.y;
-                double dz = ball.pos.z - (player2.pos.z + 1.5);
-                double distancia = sqrt(dx*dx + dy*dy + dz*dz);
-                
-                if(distancia < (ball.radius + 1.2)) {
-                    player2.recibirDanio(10);
-                    ball.golpeoReciente = true;
-                    ball.vel.x = -dx * 0.3;
-                    ball.vel.y = -dy * 0.3;
-                    ball.vel.z = abs(ball.vel.z) * 0.5 + 0.2;
-                }
-            }
-        }
         
         // ===== LEER TECLAS =====
         int k = waitKey(30);
@@ -564,81 +444,83 @@ int main() {
         else if(k == '+' || k == '=') zoom += 2;
         else if(k == '-' || k == '_') zoom = max(10.0, zoom - 2);
         
-        // ===== CONTROLES JUGADOR 1 (WASD + Q para saltar) =====
-        if(player1.estaVivo()) {
-            double dx1 = 0, dy1 = 0;
-            if(k == 'q' || k == 'Q') player1.saltar();  // Q para saltar
-            if(k == 'w' || k == 'W') { dy1 -= 1.0; }    // Arriba
-            if(k == 's' || k == 'S') { dy1 += 1.0; }    // Abajo
-            if(k == 'a' || k == 'A') { dx1 -= 1.0; }    // Izquierda
-            if(k == 'd' || k == 'D') { dx1 += 1.0; }    // Derecha
-            
-            // Normalizar movimiento diagonal
-            double mag1 = sqrt(dx1*dx1 + dy1*dy1);
-            if(mag1 > 0.001) {
-                dx1 /= mag1;
-                dy1 /= mag1;
+        // ===== CONTROLES JUGADOR 1 (WASD - movimiento discreto en grid) =====
+        if(player1.estaVivo() && !player1.enMovimiento) {
+            if(k == 'w' || k == 'W') {  // Avanzar recto
+                player1.intentarMovimiento(player1.gridRow + 1, player1.gridCol, grid);
+            } else if(k == 'a' || k == 'A') {  // Diagonal izquierda-adelante
+                player1.intentarMovimiento(player1.gridRow + 1, player1.gridCol - 1, grid);
+            } else if(k == 'd' || k == 'D') {  // Diagonal derecha-adelante
+                player1.intentarMovimiento(player1.gridRow + 1, player1.gridCol + 1, grid);
             }
-            player1.mover(dx1, dy1, campoSize - 1.0);
         }
         
-        // ===== CONTROLES JUGADOR 2 (IJKL + U para saltar) =====
-        if(player2.estaVivo()) {
-            double dx2 = 0, dy2 = 0;
-            if(k == 'u' || k == 'U') player2.saltar();  // U para saltar
-            if(k == 'i' || k == 'I') { dy2 -= 1.0; }    // Arriba
-            if(k == 'k' || k == 'K') { dy2 += 1.0; }    // Abajo
-            if(k == 'j' || k == 'J') { dx2 -= 1.0; }    // Izquierda
-            if(k == 'l' || k == 'L') { dx2 += 1.0; }    // Derecha
-            
-            // Normalizar movimiento diagonal
-            double mag2 = sqrt(dx2*dx2 + dy2*dy2);
-            if(mag2 > 0.001) {
-                dx2 /= mag2;
-                dy2 /= mag2;
+        // ===== CONTROLES JUGADOR 2 (IJKL - movimiento discreto en grid) =====
+        if(player2.estaVivo() && !player2.enMovimiento) {
+            if(k == 'i' || k == 'I') {  // Avanzar recto
+                player2.intentarMovimiento(player2.gridRow + 1, player2.gridCol, grid);
+            } else if(k == 'j' || k == 'J') {  // Diagonal izquierda-adelante
+                player2.intentarMovimiento(player2.gridRow + 1, player2.gridCol - 1, grid);
+            } else if(k == 'l' || k == 'L') {  // Diagonal derecha-adelante
+                player2.intentarMovimiento(player2.gridRow + 1, player2.gridCol + 1, grid);
             }
-            player2.mover(dx2, dy2, campoSize - 1.0);
+        }
+        
+        // ===== VERIFICAR VICTORIA =====
+        if(player1.gridRow >= TileGrid::ROWS - 1 && player1.estaVivo()) {
+            putText(img, "JUGADOR 1 GANA!", Point(W/2 - 200, H/2), 
+                    FONT_HERSHEY_COMPLEX, 2, Scalar(0, 255, 0), 3);
+            putText(img, "Has completado el desafio!", Point(W/2 - 200, H/2 + 60), 
+                    FONT_HERSHEY_SIMPLEX, 1, Scalar(255, 255, 255), 2);
+            imshow("SQUID GAMES - Glass Bridge", img);
+            waitKey(3000);
+            destroyAllWindows();
+            system("./end");
+            return 0;
+        }
+        if(player2.gridRow >= TileGrid::ROWS - 1 && player2.estaVivo()) {
+            putText(img, "JUGADOR 2 GANA!", Point(W/2 - 200, H/2), 
+                    FONT_HERSHEY_COMPLEX, 2, Scalar(0, 255, 0), 3);
+            putText(img, "Has completado el desafio!", Point(W/2 - 200, H/2 + 60), 
+                    FONT_HERSHEY_SIMPLEX, 1, Scalar(255, 255, 255), 2);
+            imshow("SQUID GAMES - Glass Bridge", img);
+            waitKey(3000);
+            destroyAllWindows();
+            system("./end");
+            return 0;
+        }
+        
+        // Si ambos mueren, game over
+        if(player1.muerto && player2.muerto) {
+            putText(img, "GAME OVER", Point(W/2 - 150, H/2), 
+                    FONT_HERSHEY_COMPLEX, 2, Scalar(0, 0, 255), 3);
+            imshow("SQUID GAMES - Glass Bridge", img);
+            waitKey(2000);
+            destroyAllWindows();
+            system("./end");
+            return 0;
         }
         
         // ===== PAREDES DEL FONDO CON TEXTURA =====
         double alturaParedes = 8.0;  // Altura de las paredes
         
-        // PARED FONDO IZQUIERDA (en Y = -campoSize, de X=-campoSize a X=campoSize)
-        V3 paredIzq[4] = {
+        // PARED FONDO (en Y = -campoSize, de X=-campoSize a X=campoSize)
+        V3 paredFondo[4] = {
             {-campoSize, -campoSize, 0},           // Esquina inferior izquierda
             {campoSize, -campoSize, 0},            // Esquina inferior derecha
             {campoSize, -campoSize, alturaParedes},  // Esquina superior derecha
             {-campoSize, -campoSize, alturaParedes}  // Esquina superior izquierda
         };
-        Point paredIzqPts[4];
+        Point paredFondoPts[4];
         for(int i = 0; i < 4; i++) {
-            paredIzqPts[i] = isoProject(paredIzq[i], W, H, zoom);
+            paredFondoPts[i] = isoProject(paredFondo[i], W, H, zoom);
         }
         
-        // Aplicar textura a pared izquierda
-        if(!texturaPared1.empty()) {
-            applyTextureToWall(img, paredIzqPts, 4, texturaPared1);
-        } else {
-            fillConvexPoly(img, paredIzqPts, 4, Scalar(120, 100, 80));  // Color ladrillo fallback
-        }
-        
-        // PARED FONDO DERECHA (en X = campoSize, de Y=-campoSize a Y=campoSize)
-        V3 paredDer[4] = {
-            {campoSize, -campoSize, 0},            // Esquina inferior frontal
-            {campoSize, campoSize, 0},             // Esquina inferior trasera
-            {campoSize, campoSize, alturaParedes},   // Esquina superior trasera
-            {campoSize, -campoSize, alturaParedes}   // Esquina superior frontal
-        };
-        Point paredDerPts[4];
-        for(int i = 0; i < 4; i++) {
-            paredDerPts[i] = isoProject(paredDer[i], W, H, zoom);
-        }
-        
-        // Aplicar textura a pared derecha
+        // Aplicar textura a pared del fondo (glass2)
         if(!texturaPared2.empty()) {
-            applyTextureToWall(img, paredDerPts, 4, texturaPared2);
+            applyTextureToWall(img, paredFondoPts, 4, texturaPared2);
         } else {
-            fillConvexPoly(img, paredDerPts, 4, Scalar(100, 90, 70));  // Color ladrillo fallback
+            fillConvexPoly(img, paredFondoPts, 4, Scalar(120, 100, 80));  // Color ladrillo fallback
         }
         
         // PARED LATERAL IZQUIERDA (en X = -campoSize, de Y=-campoSize a Y=campoSize)
@@ -653,28 +535,108 @@ int main() {
             paredLatIzqPts[i] = isoProject(paredLatIzq[i], W, H, zoom);
         }
         
-        // Aplicar textura a pared lateral izquierda
+        // Aplicar textura a pared lateral izquierda (glass2)
         if(!texturaPared2.empty()) {
             applyTextureToWall(img, paredLatIzqPts, 4, texturaPared2);
         } else {
             fillConvexPoly(img, paredLatIzqPts, 4, Scalar(110, 95, 75));  // Color ladrillo fallback
         }
         
-        // PLANO DEL SUELO CON TEXTURA
-        V3 corners[4] = {
-            {-campoSize, -campoSize, 0}, {campoSize, -campoSize, 0},
-            {campoSize, campoSize, 0}, {-campoSize, campoSize, 0}
+        // ===== PLANO DEL PISO NEGRO =====
+        V3 pisoCorners[4] = {
+            {-campoSize, -campoSize, 0}, 
+            {campoSize, -campoSize, 0},
+            {campoSize, campoSize, 0}, 
+            {-campoSize, campoSize, 0}
         };
-        Point planePts[4];
+        Point pisoPts[4];
         for(int i = 0; i < 4; i++) {
-            planePts[i] = isoProject(corners[i], W, H, zoom);
+            pisoPts[i] = isoProject(pisoCorners[i], W, H, zoom);
         }
         
-        // Aplicar textura al piso
-        if(!texturaPiso.empty()) {
-            applyTextureToWall(img, planePts, 4, texturaPiso);
-        } else {
-            fillConvexPoly(img, planePts, 4, Scalar(40, 160, 70));  // Verde fallback
+        // Renderizar piso negro
+        fillConvexPoly(img, pisoPts, 4, Scalar(0, 0, 0));  // Negro
+        
+        // ===== RENDERIZAR GRID DEL PUENTE DE VIDRIO =====
+        double gridSpacing = 3.0;
+        double offsetX = -1.5;
+        double offsetY = -9.0;
+        double tileSize = 2.8;  // Más grande para ser más visible
+        double tileHeight = 0.5;  // MUCHO MÁS ALTO para que se vea claramente
+        
+        for(int row = 0; row < TileGrid::ROWS; row++) {
+            for(int col = 0; col < TileGrid::COLS; col++) {
+                double tileX = offsetX + col * gridSpacing;
+                double tileY = offsetY + row * gridSpacing;
+                
+                Scalar tileColor;
+                bool usarTextura = false;
+                
+                if(grid.isRevealed[row][col]) {
+                    if(grid.isSafe[row][col]) {
+                        tileColor = Scalar(50, 255, 50);  // Verde brillante para segura
+                    } else {
+                        tileColor = Scalar(50, 50, 255);  // Rojo brillante para trampa rota
+                    }
+                } else {
+                    // Usar textura de vidrio para tiles no reveladas
+                    usarTextura = !texturaVidrio.empty();
+                    tileColor = Scalar(255, 255, 255);  // Blanco brillante para que la textura se vea bien
+                }
+                
+                // Dibujar tile como cubo delgado BIEN ELEVADO del piso negro
+                vector<Face3D> tileFaces;
+                drawCube3D(tileFaces, {tileX, tileY, tileHeight}, {tileSize, tileSize, 0.4}, tileColor, W, H, zoom);
+                
+                // Ordenar y renderizar
+                sort(tileFaces.begin(), tileFaces.end(), [](const Face3D& a, const Face3D& b) {
+                    return a.depth < b.depth;
+                });
+                
+                int faceIndex = 0;
+                for(auto& face : tileFaces) {
+                    if(face.drawFace || true) {  // Renderizar todas las caras
+                        // Si debe usar textura, aplicarla con brillo ajustado según la cara
+                        if(usarTextura) {
+                            // Aplicar textura con ajuste de brillo según la cara (superior, frontal, lateral)
+                            Mat texturaAjustada = texturaVidrio.clone();
+                            
+                            // Ajustar brillo según la cara para mantener efecto 3D
+                            double factorBrillo = 1.0;
+                            if(faceIndex == 0) factorBrillo = 1.2;      // Cara superior más brillante
+                            else if(faceIndex == 1) factorBrillo = 1.0; // Cara frontal normal
+                            else if(faceIndex == 2) factorBrillo = 0.7; // Cara lateral más oscura
+                            
+                            if(factorBrillo != 1.0) {
+                                texturaAjustada.convertTo(texturaAjustada, -1, factorBrillo, 0);
+                            }
+                            
+                            applyTextureToWall(img, face.pts, 4, texturaAjustada);
+                        } else {
+                            fillConvexPoly(img, face.pts, 4, face.color);
+                        }
+                    }
+                    faceIndex++;
+                }
+                
+                // Dibujar contorno negro de la cuadrícula (más grueso)
+                // Obtener las 4 esquinas superiores del tile
+                V3 corners[4] = {
+                    {tileX - tileSize/2, tileY - tileSize/2, tileHeight + 0.4},
+                    {tileX + tileSize/2, tileY - tileSize/2, tileHeight + 0.4},
+                    {tileX + tileSize/2, tileY + tileSize/2, tileHeight + 0.4},
+                    {tileX - tileSize/2, tileY + tileSize/2, tileHeight + 0.4}
+                };
+                Point cornerPts[4];
+                for(int i = 0; i < 4; i++) {
+                    cornerPts[i] = isoProject(corners[i], W, H, zoom);
+                }
+                
+                // Dibujar líneas del contorno negro MUY gruesas
+                for(int i = 0; i < 4; i++) {
+                    line(img, cornerPts[i], cornerPts[(i+1)%4], Scalar(0, 0, 0), 5);
+                }
+            }
         }
         
         // RENDERIZAR PERSONAJES 3D
@@ -715,20 +677,6 @@ int main() {
             }
         }
         
-        // ===== DIBUJAR PELOTAS =====
-        // Ordenar pelotas por profundidad (Z) para dibujar correctamente
-        vector<int> ballIndices;
-        for(size_t i = 0; i < balls.size(); i++) {
-            if(balls[i].alive) ballIndices.push_back(i);
-        }
-        sort(ballIndices.begin(), ballIndices.end(), [&](int a, int b) {
-            return balls[a].pos.z < balls[b].pos.z;
-        });
-        
-        for(int idx : ballIndices) {
-            drawBall(img, balls[idx], W, H, zoom);
-        }
-        
         // ===== DESTELLOS DE MUERTE =====
         if(player1.muerto) {
             drawDeathFlash(img, player1, W, H, zoom);
@@ -746,42 +694,23 @@ int main() {
         }
         
         // HUD
-        putText(img, "SQUID GAMES", Point(20, 40), 
+        putText(img, "GLASS BRIDGE CHALLENGE", Point(20, 40), 
                 FONT_HERSHEY_COMPLEX, 1.2, Scalar(255, 255, 255), 2);
         rectangle(img, Point(15, 60), Point(480, 135), Scalar(0, 0, 0), -1);
-        putText(img, "P1: WASD=Mover | Q=Saltar", Point(20, 80), 
+        putText(img, "P1: W=Adelante | A/D=Diagonales", Point(20, 80), 
                 FONT_HERSHEY_SIMPLEX, 0.5, Scalar(80, 220, 255), 1);
-        putText(img, "P2: IJKL=Mover | U=Saltar", Point(20, 100), 
+        putText(img, "P2: I=Adelante | J/L=Diagonales", Point(20, 100), 
                 FONT_HERSHEY_SIMPLEX, 0.5, Scalar(80, 120, 255), 1);
         putText(img, "+/- Zoom", Point(20, 125), 
                 FONT_HERSHEY_SIMPLEX, 0.5, Scalar(200, 200, 200), 1);
         
-        // TIMER en la parte superior derecha (con más margen)
-        string timerText = "TIEMPO: " + to_string(tiempoRestante) + "s";
-        int timerWidth = 250;
-        int margenDerecha = 80;  // Más margen desde el borde derecho
-        rectangle(img, Point(W - timerWidth - margenDerecha, 20), Point(W - margenDerecha, 100), Scalar(0, 0, 0), -1);
-        rectangle(img, Point(W - timerWidth - margenDerecha, 20), Point(W - margenDerecha, 100), Scalar(0, 0, 200), 3);
-        putText(img, timerText, Point(W - timerWidth - margenDerecha + 15, 70), 
-                FONT_HERSHEY_COMPLEX, 1.5, Scalar(0, 0, 255), 3);
-        
         putText(img, "ESC para Salir", Point(20, H-20), 
                 FONT_HERSHEY_SIMPLEX, 0.5, Scalar(200, 200, 200), 1);
         
-        // ===== VERIFICAR GAME OVER =====
-        // Si ambos jugadores están muertos, terminar juego
-        if(player1.muerto && player2.muerto) {
-            // Esperar un momento para que se vea el último frame
-            imshow("SQUID GAMES", img);
-            waitKey(2000); // 2 segundos
-            destroyAllWindows();
-            system("./end");
-            return 0;
-        }
-        
     // Single view (we removed split rendering). Display img directly.
-    imshow("SQUID GAMES", img);
+    imshow("SQUID GAMES - Glass Bridge", img);
     }
     
     return 0;
 }
+
