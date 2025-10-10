@@ -6,30 +6,31 @@ squid: primeravista.cpp arena_isometrica.cpp
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall
 OPENCV_FLAGS = `pkg-config --cflags --libs opencv4`
+SFML_FLAGS = `pkg-config --cflags --libs sfml-audio`
 
 # Targets
 
 all: juegoroblox juego3d snake3d arena arena2 menu end
 menu: primeravista.cpp arena
-	$(CXX) $(CXXFLAGS) primeravista.cpp -o menu $(OPENCV_FLAGS)
+	$(CXX) $(CXXFLAGS) primeravista.cpp -o menu $(OPENCV_FLAGS) $(SFML_FLAGS)
 
 end: end.cpp
-	$(CXX) $(CXXFLAGS) end.cpp -o end $(OPENCV_FLAGS)
+	$(CXX) $(CXXFLAGS) end.cpp -o end $(OPENCV_FLAGS) $(SFML_FLAGS)
 
 juegoroblox: juegoroblox.cpp
-	$(CXX) $(CXXFLAGS) juegoroblox.cpp -o juegoroblox $(OPENCV_FLAGS)
+	$(CXX) $(CXXFLAGS) juegoroblox.cpp -o juegoroblox $(OPENCV_FLAGS) $(SFML_FLAGS)
 
 juego3d: juego3d.cpp
-	$(CXX) $(CXXFLAGS) juego3d.cpp -o juego3d $(OPENCV_FLAGS)
+	$(CXX) $(CXXFLAGS) juego3d.cpp -o juego3d $(OPENCV_FLAGS) $(SFML_FLAGS)
 
 snake3d: snake3d_hypercube.cpp
-	$(CXX) $(CXXFLAGS) snake3d_hypercube.cpp -o snake3d $(OPENCV_FLAGS)
+	$(CXX) $(CXXFLAGS) snake3d_hypercube.cpp -o snake3d $(OPENCV_FLAGS) $(SFML_FLAGS)
 
 arena: arena_isometrica.cpp
-	$(CXX) $(CXXFLAGS) arena_isometrica.cpp -o arena $(OPENCV_FLAGS)
+	$(CXX) $(CXXFLAGS) arena_isometrica.cpp -o arena $(OPENCV_FLAGS) $(SFML_FLAGS)
 
 arena2: arena2.cpp
-	$(CXX) $(CXXFLAGS) arena2.cpp -o arena2 $(OPENCV_FLAGS)
+	$(CXX) $(CXXFLAGS) arena2.cpp -o arena2 $(OPENCV_FLAGS) $(SFML_FLAGS)
 
 # Ejecutar juego de Roblox
 run: juegoroblox

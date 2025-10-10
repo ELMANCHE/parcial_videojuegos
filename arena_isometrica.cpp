@@ -1,5 +1,7 @@
 #include <opencv2/opencv.hpp>
 #include <cmath>
+#include <SFML/Audio.hpp>
+#include <memory>
 #include <vector>
 #include <algorithm>
 #include <random>
@@ -361,6 +363,16 @@ void applyTextureToWall(Mat& img, Point* pts, int npts, const Mat& texture) {
 }
 
 int main() {
+    // Inicializar y reproducir musica
+    sf::SoundBuffer musicBuffer;
+    std::unique_ptr<sf::Sound> music;
+    if(!musicBuffer.loadFromFile("sources/squiddy.wav")) {
+        std::cout << "Advertencia: no se pudo abrir sources/squiddy.wav" << std::endl;
+    } else {
+        music = std::make_unique<sf::Sound>(musicBuffer);
+        music->setLooping(true);
+        music->play();
+    }
     int W = 1200, H = 800;
     Mat img(H, W, CV_8UC3);
     double zoom = 25.0;
@@ -416,7 +428,7 @@ int main() {
         int tiempoRestante = tiempoLimite - tiempoTranscurrido;
         
         // Si se acaba el tiempo, verificar sobrevivientes
-        if(tiempoRestante <= 0) {
+            if(tiempoRestante <= 0) {
             tiempoRestante = 0;
             // Si hay al menos un sobreviviente, ir a arena2
             if(player1.estaVivo() || player2.estaVivo()) {
@@ -426,12 +438,15 @@ int main() {
                         FONT_HERSHEY_COMPLEX, 1.2, Scalar(255, 255, 255), 2);
                 imshow("SQUID GAMES", img);
                 waitKey(2000);
+                // Parar musica antes de cambiar a siguiente ejecutable
+                if(music) { music->stop(); music.reset(); }
                 destroyAllWindows();
                 system("./arena2");
                 return 0;
             } else {
                 // Ambos muertos, ir a game over
                 waitKey(2000);
+                if(music) { music->stop(); music.reset(); }
                 destroyAllWindows();
                 system("./end");
                 return 0;

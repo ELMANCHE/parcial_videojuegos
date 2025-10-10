@@ -1,5 +1,7 @@
 #include <opencv2/opencv.hpp>
 #include <cmath>
+#include <SFML/Audio.hpp>
+#include <memory>
 #include <vector>
 #include <algorithm>
 #include <random>
@@ -391,6 +393,16 @@ void applyTextureToWall(Mat& img, Point* pts, int npts, const Mat& texture) {
 }
 
 int main() {
+    // Inicializar y reproducir musica
+    sf::SoundBuffer musicBuffer;
+    std::unique_ptr<sf::Sound> music;
+    if(!musicBuffer.loadFromFile("sources/squiddy.wav")) {
+        cerr << "Advertencia: no se pudo abrir sources/squiddy.wav" << endl;
+    } else {
+        music = std::make_unique<sf::Sound>(musicBuffer);
+        music->setLooping(true);
+        music->play();
+    }
     int W = 1200, H = 800;
     Mat img(H, W, CV_8UC3);
     double zoom = 25.0;
@@ -467,13 +479,14 @@ int main() {
         }
         
         // ===== VERIFICAR VICTORIA =====
-        if(player1.gridRow >= TileGrid::ROWS - 1 && player1.estaVivo()) {
+    if(player1.gridRow >= TileGrid::ROWS - 1 && player1.estaVivo()) {
             putText(img, "JUGADOR 1 GANA!", Point(W/2 - 200, H/2), 
                     FONT_HERSHEY_COMPLEX, 2, Scalar(0, 255, 0), 3);
             putText(img, "Has completado el desafio!", Point(W/2 - 200, H/2 + 60), 
                     FONT_HERSHEY_SIMPLEX, 1, Scalar(255, 255, 255), 2);
             imshow("SQUID GAMES - Glass Bridge", img);
             waitKey(3000);
+            if(music) { music->stop(); music.reset(); }
             destroyAllWindows();
             system("./end");
             return 0;
@@ -485,6 +498,7 @@ int main() {
                     FONT_HERSHEY_SIMPLEX, 1, Scalar(255, 255, 255), 2);
             imshow("SQUID GAMES - Glass Bridge", img);
             waitKey(3000);
+            if(music) { music->stop(); music.reset(); }
             destroyAllWindows();
             system("./end");
             return 0;
@@ -496,6 +510,7 @@ int main() {
                     FONT_HERSHEY_COMPLEX, 2, Scalar(0, 0, 255), 3);
             imshow("SQUID GAMES - Glass Bridge", img);
             waitKey(2000);
+            if(music) { music->stop(); music.reset(); }
             destroyAllWindows();
             system("./end");
             return 0;

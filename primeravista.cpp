@@ -1,4 +1,6 @@
 #include <opencv2/opencv.hpp>
+#include <SFML/Audio.hpp>
+#include <memory>
 #include <iostream>
 #include <string>
 
@@ -46,6 +48,16 @@ void menuMouseCallback(int event, int x, int y, int, void*) {
 }
 
 int main() {
+    // Cargar y reproducir musica con SFML
+    sf::SoundBuffer musicBuffer;
+    std::unique_ptr<sf::Sound> music;
+    if(!musicBuffer.loadFromFile("sources/squiddy.wav")) {
+        cerr << "Advertencia: No se pudo abrir sources/squiddy.wav" << endl;
+    } else {
+        music = std::make_unique<sf::Sound>(musicBuffer);
+        music->setLooping(true);
+        music->play();
+    }
     // Cargar fondo
     Mat bg = imread(BG_IMG_PATH);
     if(bg.empty()) {
@@ -95,6 +107,8 @@ int main() {
             putText(loading, cargando, corg, FONT_HERSHEY_SIMPLEX, 1.2, Scalar(0,255,255), 3, LINE_AA);
             imshow("MENU", loading);
             waitKey(300);
+            // Parar la musica antes de lanzar el siguiente ejecutable
+            if(music) { music->stop(); music.reset(); }
             destroyAllWindows();
             system("./arena");
             return 0;
@@ -104,5 +118,7 @@ int main() {
         clicked = 0;
     }
     destroyAllWindows();
+    // Parar musica al cerrar
+    if(music) { music->stop(); music.reset(); }
     return 0;
 }
