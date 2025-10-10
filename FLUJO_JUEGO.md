@@ -1,4 +1,4 @@
-# 🎮 Flujo del Juego - Squid Games
+# Flujo del Juego - Squid Games
 
 ## Diagrama de Flujo
 

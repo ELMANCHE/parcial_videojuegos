@@ -51,7 +51,7 @@ int main() {
     // Cargar y reproducir musica con SFML
     sf::SoundBuffer musicBuffer;
     std::unique_ptr<sf::Sound> music;
-    if(!musicBuffer.loadFromFile("sources/squiddy.wav")) {
+    if(!musicBuffer.loadFromFile("sources/free.wav")) {
         cerr << "Advertencia: No se pudo abrir sources/squiddy.wav" << endl;
     } else {
         music = std::make_unique<sf::Sound>(musicBuffer);
@@ -72,10 +72,10 @@ int main() {
     btnJugar = {Rect((W-btnW)/2, H/2-40, btnW, btnH), "JUGAR"};
     btnSalir = {Rect((W-btnW)/2, H/2+40, btnW, btnH), "SALIR"};
 
-    // *** CRÍTICO: Crear la ventana PRIMERO ***
+    // Crear la ventana  
     namedWindow("MENU", WINDOW_AUTOSIZE);
     
-    // *** LUEGO configurar el callback ***
+    //  configurar el callback 
     setMouseCallback("MENU", menuMouseCallback, nullptr);
 
     bool running = true;

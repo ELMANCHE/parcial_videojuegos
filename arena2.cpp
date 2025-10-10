@@ -393,13 +393,14 @@ void applyTextureToWall(Mat& img, Point* pts, int npts, const Mat& texture) {
 }
 
 int main() {
-    // Inicializar y reproducir musica
-    sf::SoundBuffer musicBuffer;
+    // Initialize SFML audio
+    std::unique_ptr<sf::SoundBuffer> buffer(new sf::SoundBuffer());
     std::unique_ptr<sf::Sound> music;
-    if(!musicBuffer.loadFromFile("sources/squiddy.wav")) {
-        cerr << "Advertencia: no se pudo abrir sources/squiddy.wav" << endl;
+    
+    if (!buffer->loadFromFile("./sources/squiddy.wav")) {
+        std::cout << "Error loading sound file" << std::endl;
     } else {
-        music = std::make_unique<sf::Sound>(musicBuffer);
+        music.reset(new sf::Sound(*buffer));
         music->setLooping(true);
         music->play();
     }

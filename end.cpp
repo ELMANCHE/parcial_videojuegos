@@ -1,6 +1,8 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <string>
+#include <SFML/Audio.hpp>
+#include <memory>
 
 using namespace cv;
 using namespace std;
@@ -46,6 +48,18 @@ void endMouseCallback(int event, int x, int y, int, void*) {
 }
 
 int main() {
+    // Cargar y reproducir musica con SFML
+    sf::SoundBuffer musicBuffer;
+    std::unique_ptr<sf::Sound> music;
+    if(!musicBuffer.loadFromFile("sources/free.wav")) {
+        cerr << "Advertencia: No se pudo abrir sources/squiddy.wav" << endl;
+    } else {
+        music = std::make_unique<sf::Sound>(musicBuffer);
+        music->setLooping(true);
+        music->play();
+        cerr << "[END] Reproduciendo música" << endl;
+    }
+
     // Cargar fondo
     Mat bg = imread(BG_IMG_PATH);
     if(bg.empty()) {
@@ -104,6 +118,7 @@ int main() {
             putText(loading, cargando, corg, FONT_HERSHEY_SIMPLEX, 1.2, Scalar(0,255,255), 3, LINE_AA);
             imshow("GAME OVER", loading);
             waitKey(500);
+            if(music) { music->stop(); music.reset(); }
             destroyAllWindows();
             system("./arena");
             return 0;

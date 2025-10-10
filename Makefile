@@ -11,8 +11,11 @@ SFML_FLAGS = `pkg-config --cflags --libs sfml-audio`
 # Targets
 
 all: juegoroblox juego3d snake3d arena arena2 menu end
-menu: primeravista.cpp arena
+menu: primeravista.cpp arena arena2 end
 	$(CXX) $(CXXFLAGS) primeravista.cpp -o menu $(OPENCV_FLAGS) $(SFML_FLAGS)
+
+arena2: arena2.cpp
+	$(CXX) $(CXXFLAGS) arena2.cpp -o arena2 $(OPENCV_FLAGS) $(SFML_FLAGS)
 
 end: end.cpp
 	$(CXX) $(CXXFLAGS) end.cpp -o end $(OPENCV_FLAGS) $(SFML_FLAGS)
