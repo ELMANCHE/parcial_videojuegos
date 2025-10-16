@@ -422,7 +422,7 @@ int main() {
 
     // Single-view rendering: all drawing happens into `img` below
         
-        // ===== CALCULAR TIEMPO RESTANTE =====
+        // CALCULAR TIEMPO RESTANTE 
         auto tiempoActual = chrono::steady_clock::now();
         auto tiempoTranscurrido = chrono::duration_cast<chrono::seconds>(tiempoActual - tiempoInicio).count();
         int tiempoRestante = tiempoLimite - tiempoTranscurrido;
@@ -453,7 +453,7 @@ int main() {
             }
         }
         
-        // ===== ACTUALIZAR FÍSICAS DE JUGADORES =====
+        // ACTUALIZAR FÍSICAS DE JUGADORES 
         player1.actualizarFisica();
         player2.actualizarFisica();
         
@@ -461,7 +461,7 @@ int main() {
         if(player1.muerto) player1.framesDesdeRespawn++;
         if(player2.muerto) player2.framesDesdeRespawn++;
         
-        // ===== ACTUALIZAR FÍSICAS DE PELOTAS =====
+        //  ACTUALIZAR FÍSICAS DE PELOTAS 
         for(auto& ball : balls) {
             if(!ball.alive) continue;
             

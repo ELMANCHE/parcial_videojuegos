@@ -71,40 +71,108 @@ struct Face3D {
     bool drawFace;
 };
 
-// Personaje Roblox
-struct RobloxPlayer {
+
+// Clase base para Personaje herencia y polimorfismo
+class Personaje {
+protected:
     V3 pos;
-    double velZ;         // Velocidad vertical para salto
-    bool enSuelo;        // Si está tocando el suelo
-    double speed;        // Velocidad de movimiento
-    int vida;            // Puntos de vida (0-100)
-    int playerNum;       // Número de jugador
-    bool muerto;         // Si el jugador está muerto
-    int framesDesdeRespawn;  // Frames desde que murió
-    V3 posicionMuerte;   // Posición donde murió
-    int gridRow;         // Fila actual en el grid (0-5)
-    int gridCol;         // Columna actual en el grid (0-1)
-    bool enMovimiento;   // Para animar el movimiento
-    V3 targetPos;        // Posición objetivo del movimiento
+    double velZ;
+    bool enSuelo;
+    double speed;
+    int vida;
+    int playerNum;
+    bool muerto;
+    int framesDesdeRespawn;
+    V3 posicionMuerte;
+    int gridRow;
+    int gridCol;
+    bool enMovimiento;
+    V3 targetPos;
     int framesMovimiento;
-    Scalar colorCabeza, colorTorso, colorBrazo, colorPierna;
-    
-    RobloxPlayer(double x, double y, int playerNum, int startCol) {
-        double tileHeight = 0.5;  // Altura de las tiles (actualizado)
-        pos = {x, y, tileHeight + 0.4};  // Jugador SOBRE la tile desde el inicio
-        velZ = 0;
-        enSuelo = true;
-        speed = 0.50;
-        vida = 100;
-        this->playerNum = playerNum;
-        muerto = false;
-        framesDesdeRespawn = 0;
-        gridRow = 0;  // Empiezan en la fila 0
-        gridCol = startCol;  // Cada jugador en una columna diferente
-        enMovimiento = false;
+public:
+    Personaje(double x, double y, int playerNum, int startCol)
+        : pos{x, y, 0.9}, velZ(0), enSuelo(true), speed(0.5), vida(100), playerNum(playerNum), muerto(false),
+          framesDesdeRespawn(0), gridRow(0), gridCol(startCol), enMovimiento(false), framesMovimiento(0), targetPos{x, y, 0.9} {}
+
+    virtual ~Personaje() = default;
+
+    virtual void recibirDanio(int cantidad) {
+        vida -= cantidad;
+        if(vida < 0) vida = 0;
+        if(vida == 0 && !muerto) {
+            muerto = true;
+            framesDesdeRespawn = 0;
+            posicionMuerte = pos;
+        }
+    }
+
+    virtual bool estaVivo() const {
+        return vida > 0 && !muerto;
+    }
+
+    virtual bool intentarMovimiento(int nuevaFila, int nuevaCol, TileGrid& grid) {
+        if(muerto || enMovimiento) return false;
+        if(nuevaCol < 0 || nuevaCol >= TileGrid::COLS) return false;
+        if(nuevaFila < 0 || nuevaFila >= TileGrid::ROWS) return false;
+        if(nuevaFila <= gridRow) return false;
+        if(nuevaFila > gridRow + 1) return false;
+        gridRow = nuevaFila;
+        gridCol = nuevaCol;
+        double gridSpacing = 3.0;
+        double offsetX = -1.5;
+        double tileHeight = 0.5;
+        targetPos.x = offsetX + gridCol * gridSpacing;
+        targetPos.y = -9.0 + gridRow * gridSpacing;
+        targetPos.z = tileHeight + 0.4;
+        enMovimiento = true;
         framesMovimiento = 0;
+        bool esSafe = grid.checkTile(gridRow, gridCol);
+        if(!esSafe) {
+            vida = 0;
+            muerto = true;
+            posicionMuerte = targetPos;
+        }
+        return true;
+    }
+
+    virtual void actualizarMovimiento() {
+        if(!enMovimiento) return;
+        framesMovimiento++;
+        float t = framesMovimiento / 20.0f;
+        if(t > 1.0f) t = 1.0f;
+        pos.x = pos.x + (targetPos.x - pos.x) * 0.2;
+        pos.y = pos.y + (targetPos.y - pos.y) * 0.2;
+        pos.z = pos.z + (targetPos.z - pos.z) * 0.2;
+        if(framesMovimiento >= 20) {
+            pos = targetPos;
+            enMovimiento = false;
+        }
+    }
+
+    // Getters para encapsulamiento
+    V3 getPos() const { return pos; }
+    int getVida() const { return vida; }
+    int getPlayerNum() const { return playerNum; }
+    bool isMuerto() const { return muerto; }
+    int getFramesDesdeRespawn() const { return framesDesdeRespawn; }
+    V3 getPosicionMuerte() const { return posicionMuerte; }
+    int getGridRow() const { return gridRow; }
+    int getGridCol() const { return gridCol; }
+    bool isEnMovimiento() const { return enMovimiento; }
+    V3 getTargetPos() const { return targetPos; }
+    int getFramesMovimiento() const { return framesMovimiento; }
+};
+
+// Clase derivada: RobloxPlayer
+class RobloxPlayer : public Personaje {
+private: //encapsulamiento
+    Scalar colorCabeza, colorTorso, colorBrazo, colorPierna;
+public:
+    RobloxPlayer(double x, double y, int playerNum, int startCol)
+        : Personaje(x, y, playerNum, startCol) {
+        double tileHeight = 0.5;
+        pos = {x, y, tileHeight + 0.4};
         targetPos = pos;
-        
         if(playerNum == 1) {
             colorCabeza = Scalar(80, 220, 255);
             colorTorso = Scalar(220, 180, 80);
@@ -117,78 +185,12 @@ struct RobloxPlayer {
             colorPierna = Scalar(150, 80, 220);
         }
     }
-    
-    void recibirDanio(int cantidad) {
-        vida -= cantidad;
-        if(vida < 0) vida = 0;
-        if(vida == 0 && !muerto) {
-            muerto = true;
-            framesDesdeRespawn = 0;
-            posicionMuerte = pos;
-        }
-    }
-    
-    bool estaVivo() const {
-        return vida > 0 && !muerto;
-    }
-    
-    // Intentar moverse a una casilla del grid
-    bool intentarMovimiento(int nuevaFila, int nuevaCol, TileGrid& grid) {
-        // Validar que el movimiento es válido
-        if(muerto || enMovimiento) return false;
-        if(nuevaCol < 0 || nuevaCol >= TileGrid::COLS) return false;
-        if(nuevaFila < 0 || nuevaFila >= TileGrid::ROWS) return false;
-        
-        // Solo permitir avanzar hacia adelante (no retroceder)
-        if(nuevaFila <= gridRow) return false;
-        
-        // Solo permitir movimiento a fila adyacente
-        if(nuevaFila > gridRow + 1) return false;
-        
-        // Iniciar movimiento
-        gridRow = nuevaFila;
-        gridCol = nuevaCol;
-        
-        // Convertir posición del grid a coordenadas del mundo
-        // Grid centrado en Y=0, cada tile es 3 unidades
-        double gridSpacing = 3.0;
-        double offsetX = -1.5; // Centrar el grid de 2 columnas
-        double tileHeight = 0.5; // Altura de las tiles sobre el piso negro (actualizado)
-        targetPos.x = offsetX + gridCol * gridSpacing;
-        targetPos.y = -9.0 + gridRow * gridSpacing; // Grid empieza en Y=-9
-        targetPos.z = tileHeight + 0.4;  // Jugador SOBRE la tile
-        
-        enMovimiento = true;
-        framesMovimiento = 0;
-        
-        // Verificar si es una trampa
-        bool esSafe = grid.checkTile(gridRow, gridCol);
-        if(!esSafe) {
-            vida = 0;
-            muerto = true;
-            posicionMuerte = targetPos;
-        }
-        
-        return true;
-    }
-    
-    void actualizarMovimiento() {
-        if(!enMovimiento) return;
-        
-        framesMovimiento++;
-        float t = framesMovimiento / 20.0f; // 20 frames para completar el movimiento
-        if(t > 1.0f) t = 1.0f;
-        
-        // Interpolación suave
-        pos.x = pos.x + (targetPos.x - pos.x) * 0.2;
-        pos.y = pos.y + (targetPos.y - pos.y) * 0.2;
-        pos.z = pos.z + (targetPos.z - pos.z) * 0.2;  // Interpolar también Z
-        
-        if(framesMovimiento >= 20) {
-            pos = targetPos;
-            enMovimiento = false;
-        }
-    }
+
+    // Getters para colores (encapsulamiento)
+    Scalar getColorCabeza() const { return colorCabeza; }
+    Scalar getColorTorso() const { return colorTorso; }
+    Scalar getColorBrazo() const { return colorBrazo; }
+    Scalar getColorPierna() const { return colorPierna; }
 };
 
 // Simple global mouse camera control (single view)
@@ -267,94 +269,72 @@ void drawCube3D(vector<Face3D>& faces, V3 center, V3 size, Scalar color, int w, 
 }
 
 // Renderizar personaje Roblox
-void renderRobloxPlayer(vector<Face3D>& faces, const RobloxPlayer& player, int w, int h, double zoom) {
-    V3 base = player.pos;
-    
+// Polimorfismo: función que acepta Personaje&
+void renderRobloxPlayer(vector<Face3D>& faces, const Personaje& personaje, int w, int h, double zoom) {
+    // Downcast seguro para acceder a colores
+    const RobloxPlayer* player = dynamic_cast<const RobloxPlayer*>(&personaje);
+    if (!player) return;
+    V3 base = player->getPos();
     // PIERNAS
-    drawCube3D(faces, {base.x - 0.3, base.y, base.z + 0.5}, {0.4, 0.4, 1.0}, player.colorPierna, w, h, zoom);
-    drawCube3D(faces, {base.x + 0.3, base.y, base.z + 0.5}, {0.4, 0.4, 1.0}, player.colorPierna, w, h, zoom);
-    
+    drawCube3D(faces, {base.x - 0.3, base.y, base.z + 0.5}, {0.4, 0.4, 1.0}, player->getColorPierna(), w, h, zoom);
+    drawCube3D(faces, {base.x + 0.3, base.y, base.z + 0.5}, {0.4, 0.4, 1.0}, player->getColorPierna(), w, h, zoom);
     // TORSO
-    drawCube3D(faces, {base.x, base.y, base.z + 1.6}, {1.2, 0.6, 1.2}, player.colorTorso, w, h, zoom);
-    
+    drawCube3D(faces, {base.x, base.y, base.z + 1.6}, {1.2, 0.6, 1.2}, player->getColorTorso(), w, h, zoom);
     // BRAZOS
-    drawCube3D(faces, {base.x - 0.8, base.y, base.z + 1.6}, {0.4, 0.4, 1.0}, player.colorBrazo, w, h, zoom);
-    drawCube3D(faces, {base.x + 0.8, base.y, base.z + 1.6}, {0.4, 0.4, 1.0}, player.colorBrazo, w, h, zoom);
-    
+    drawCube3D(faces, {base.x - 0.8, base.y, base.z + 1.6}, {0.4, 0.4, 1.0}, player->getColorBrazo(), w, h, zoom);
+    drawCube3D(faces, {base.x + 0.8, base.y, base.z + 1.6}, {0.4, 0.4, 1.0}, player->getColorBrazo(), w, h, zoom);
     // CABEZA
-    drawCube3D(faces, {base.x, base.y, base.z + 2.7}, {0.8, 0.8, 0.8}, player.colorCabeza, w, h, zoom, true);
+    drawCube3D(faces, {base.x, base.y, base.z + 2.7}, {0.8, 0.8, 0.8}, player->getColorCabeza(), w, h, zoom, true);
 }
 
 // Dibujar barra de vida sobre la cabeza del personaje
-void drawHealthBar(Mat& img, const RobloxPlayer& player, int w, int h, double zoom) {
-    if(!player.estaVivo()) return;
-    
+void drawHealthBar(Mat& img, const Personaje& personaje, int w, int h, double zoom) {
+    if(!personaje.estaVivo()) return;
+    V3 pos = personaje.getPos();
     // Posición de la barra (sobre la cabeza)
-    V3 barPos = {player.pos.x, player.pos.y, player.pos.z + 3.8};
+    V3 barPos = {pos.x, pos.y, pos.z + 3.8};
     Point barCenter = isoProject(barPos, w, h, zoom);
-    
     int barWidth = 40;
     int barHeight = 6;
     int barX = barCenter.x - barWidth/2;
     int barY = barCenter.y;
-    
     // Fondo de la barra (negro)
-    rectangle(img, Point(barX-1, barY-1), Point(barX + barWidth+1, barY + barHeight+1), 
-              Scalar(0, 0, 0), -1);
-    
+    rectangle(img, Point(barX-1, barY-1), Point(barX + barWidth+1, barY + barHeight+1), Scalar(0, 0, 0), -1);
     // Barra de vida vacía (rojo oscuro)
-    rectangle(img, Point(barX, barY), Point(barX + barWidth, barY + barHeight), 
-              Scalar(40, 40, 100), -1);
-    
+    rectangle(img, Point(barX, barY), Point(barX + barWidth, barY + barHeight), Scalar(40, 40, 100), -1);
     // Barra de vida actual
-    int vidaWidth = (int)((player.vida / 100.0) * barWidth);
+    int vidaWidth = (int)((personaje.getVida() / 100.0) * barWidth);
     Scalar colorVida;
-    if(player.vida > 60) {
+    if(personaje.getVida() > 60) {
         colorVida = Scalar(80, 220, 80);  // Verde
-    } else if(player.vida > 30) {
+    } else if(personaje.getVida() > 30) {
         colorVida = Scalar(80, 200, 255); // Amarillo
     } else {
         colorVida = Scalar(80, 80, 255);  // Rojo
     }
-    
     if(vidaWidth > 0) {
-        rectangle(img, Point(barX, barY), Point(barX + vidaWidth, barY + barHeight), 
-                  colorVida, -1);
+        rectangle(img, Point(barX, barY), Point(barX + vidaWidth, barY + barHeight), colorVida, -1);
     }
-    
     // Texto de vida
-    string vidaText = to_string(player.vida);
-    putText(img, vidaText, Point(barX + barWidth + 5, barY + barHeight), 
-            FONT_HERSHEY_SIMPLEX, 0.4, Scalar(255, 255, 255), 1);
+    string vidaText = to_string(personaje.getVida());
+    putText(img, vidaText, Point(barX + barWidth + 5, barY + barHeight), FONT_HERSHEY_SIMPLEX, 0.4, Scalar(255, 255, 255), 1);
 }
 
 // Dibujar destello de muerte
-void drawDeathFlash(Mat& img, const RobloxPlayer& player, int w, int h, double zoom) {
-    int frames = player.framesDesdeRespawn;
-    
-    // El destello dura 60 frames (2 segundos a 30 fps)
+void drawDeathFlash(Mat& img, const Personaje& personaje, int w, int h, double zoom) {
+    int frames = personaje.getFramesDesdeRespawn();
     if(frames < 60) {
-        // Calcular intensidad del destello (fade out)
         double intensity = 1.0 - (frames / 60.0);
-        intensity = intensity * intensity; // Curva cuadrática para fade más dramático
-        
-        // Posición del destello
-        Point center = isoProject(player.posicionMuerte, w, h, zoom);
-        
-        // Dibujar múltiples círculos con transparencia simulada
+        intensity = intensity * intensity;
+        Point center = isoProject(personaje.getPosicionMuerte(), w, h, zoom);
         int maxRadius = 80;
         int numCircles = 5;
-        
         for(int i = numCircles; i >= 0; i--) {
             int radius = (int)(maxRadius * intensity * (i + 1) / numCircles);
             int alpha = (int)(255 * intensity * (numCircles - i) / numCircles);
-            
-            // Color rojo brillante con fade
             Scalar color(0, 0, 255 * alpha / 255);
             circle(img, center, radius, color, -1, LINE_AA);
         }
-        
-        // Círculo blanco brillante en el centro
         int centerRadius = (int)(15 * intensity);
         if(centerRadius > 0) {
             circle(img, center, centerRadius, Scalar(200, 200, 255), -1, LINE_AA);
@@ -444,12 +424,12 @@ int main() {
     // Single-view rendering: all drawing happens into `img` below
         
         // ===== ACTUALIZAR MOVIMIENTOS DE JUGADORES =====
-        player1.actualizarMovimiento();
-        player2.actualizarMovimiento();
+    player1.actualizarMovimiento();
+    player2.actualizarMovimiento();
         
         // Actualizar contador de frames desde muerte
-        if(player1.muerto) player1.framesDesdeRespawn++;
-        if(player2.muerto) player2.framesDesdeRespawn++;
+    if(player1.isMuerto()) player1.framesDesdeRespawn++;
+    if(player2.isMuerto()) player2.framesDesdeRespawn++;
         
         // ===== LEER TECLAS =====
         int k = waitKey(30);
@@ -458,29 +438,29 @@ int main() {
         else if(k == '-' || k == '_') zoom = max(10.0, zoom - 2);
         
         // ===== CONTROLES JUGADOR 1 (WASD - movimiento discreto en grid) =====
-        if(player1.estaVivo() && !player1.enMovimiento) {
+        if(player1.estaVivo() && !player1.isEnMovimiento()) {
             if(k == 'w' || k == 'W') {  // Avanzar recto
-                player1.intentarMovimiento(player1.gridRow + 1, player1.gridCol, grid);
+                player1.intentarMovimiento(player1.getGridRow() + 1, player1.getGridCol(), grid);
             } else if(k == 'a' || k == 'A') {  // Diagonal izquierda-adelante
-                player1.intentarMovimiento(player1.gridRow + 1, player1.gridCol - 1, grid);
+                player1.intentarMovimiento(player1.getGridRow() + 1, player1.getGridCol() - 1, grid);
             } else if(k == 'd' || k == 'D') {  // Diagonal derecha-adelante
-                player1.intentarMovimiento(player1.gridRow + 1, player1.gridCol + 1, grid);
+                player1.intentarMovimiento(player1.getGridRow() + 1, player1.getGridCol() + 1, grid);
             }
         }
         
         // ===== CONTROLES JUGADOR 2 (IJKL - movimiento discreto en grid) =====
-        if(player2.estaVivo() && !player2.enMovimiento) {
+        if(player2.estaVivo() && !player2.isEnMovimiento()) {
             if(k == 'i' || k == 'I') {  // Avanzar recto
-                player2.intentarMovimiento(player2.gridRow + 1, player2.gridCol, grid);
+                player2.intentarMovimiento(player2.getGridRow() + 1, player2.getGridCol(), grid);
             } else if(k == 'j' || k == 'J') {  // Diagonal izquierda-adelante
-                player2.intentarMovimiento(player2.gridRow + 1, player2.gridCol - 1, grid);
+                player2.intentarMovimiento(player2.getGridRow() + 1, player2.getGridCol() - 1, grid);
             } else if(k == 'l' || k == 'L') {  // Diagonal derecha-adelante
-                player2.intentarMovimiento(player2.gridRow + 1, player2.gridCol + 1, grid);
+                player2.intentarMovimiento(player2.getGridRow() + 1, player2.getGridCol() + 1, grid);
             }
         }
         
         // ===== VERIFICAR VICTORIA =====
-    if(player1.gridRow >= TileGrid::ROWS - 1 && player1.estaVivo()) {
+    if(player1.getGridRow() >= TileGrid::ROWS - 1 && player1.estaVivo()) {
             putText(img, "JUGADOR 1 GANA!", Point(W/2 - 200, H/2), 
                     FONT_HERSHEY_COMPLEX, 2, Scalar(0, 255, 0), 3);
             putText(img, "Has completado el desafio!", Point(W/2 - 200, H/2 + 60), 
@@ -492,7 +472,7 @@ int main() {
             system("./end");
             return 0;
         }
-        if(player2.gridRow >= TileGrid::ROWS - 1 && player2.estaVivo()) {
+    if(player2.getGridRow() >= TileGrid::ROWS - 1 && player2.estaVivo()) {
             putText(img, "JUGADOR 2 GANA!", Point(W/2 - 200, H/2), 
                     FONT_HERSHEY_COMPLEX, 2, Scalar(0, 255, 0), 3);
             putText(img, "Has completado el desafio!", Point(W/2 - 200, H/2 + 60), 
@@ -506,7 +486,7 @@ int main() {
         }
         
         // Si ambos mueren, game over
-        if(player1.muerto && player2.muerto) {
+    if(player1.isMuerto() && player2.isMuerto()) {
             putText(img, "GAME OVER", Point(W/2 - 150, H/2), 
                     FONT_HERSHEY_COMPLEX, 2, Scalar(0, 0, 255), 3);
             imshow("SQUID GAMES - Glass Bridge", img);
@@ -694,10 +674,10 @@ int main() {
         }
         
         // ===== DESTELLOS DE MUERTE =====
-        if(player1.muerto) {
+        if(player1.isMuerto()) {
             drawDeathFlash(img, player1, W, H, zoom);
         }
-        if(player2.muerto) {
+        if(player2.isMuerto()) {
             drawDeathFlash(img, player2, W, H, zoom);
         }
         
