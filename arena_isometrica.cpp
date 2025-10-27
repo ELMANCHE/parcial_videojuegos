@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <random>
 #include <chrono>
+#include <string>
 
 using namespace cv;
 using namespace std;
@@ -73,8 +74,9 @@ struct RobloxPlayer {
     int framesDesdeRespawn;  // Frames desde que murió
     V3 posicionMuerte;   // Posición donde murió
     Scalar colorCabeza, colorTorso, colorBrazo, colorPierna;
+    bool halloween;
     
-    RobloxPlayer(double x, double y, int playerNum) {
+    RobloxPlayer(double x, double y, int playerNum, bool halloweenMode = false) {
         pos = {x, y, 0};
         velZ = 0;
         enSuelo = true;
@@ -83,17 +85,34 @@ struct RobloxPlayer {
         this->playerNum = playerNum;
         muerto = false;
         framesDesdeRespawn = 0;
+        halloween = halloweenMode;
         
-        if(playerNum == 1) {
-            colorCabeza = Scalar(80, 220, 255);
-            colorTorso = Scalar(220, 180, 80);
-            colorBrazo = Scalar(80, 220, 255);
-            colorPierna = Scalar(80, 200, 80);
+        if(halloween) {
+            if(playerNum == 1) {
+                // Esqueleto: tonos negros y blancos
+                colorCabeza = Scalar(200, 200, 200);
+                colorTorso = Scalar(40, 40, 40);
+                colorBrazo = Scalar(210, 210, 210);
+                colorPierna = Scalar(30, 30, 30);
+            } else {
+                // Calabaza: cabeza naranja brillante y traje oscuro
+                colorCabeza = Scalar(40, 140, 255); // BGR (naranja)
+                colorTorso = Scalar(40, 40, 40);
+                colorBrazo = Scalar(200, 180, 120);
+                colorPierna = Scalar(50, 50, 50);
+            }
         } else {
-            colorCabeza = Scalar(80, 120, 255);
-            colorTorso = Scalar(180, 180, 180);
-            colorBrazo = Scalar(80, 160, 255);
-            colorPierna = Scalar(150, 80, 220);
+            if(playerNum == 1) {
+                colorCabeza = Scalar(80, 220, 255);
+                colorTorso = Scalar(220, 180, 80);
+                colorBrazo = Scalar(80, 220, 255);
+                colorPierna = Scalar(80, 200, 80);
+            } else {
+                colorCabeza = Scalar(80, 120, 255);
+                colorTorso = Scalar(180, 180, 180);
+                colorBrazo = Scalar(80, 160, 255);
+                colorPierna = Scalar(150, 80, 220);
+            }
         }
     }
     
@@ -362,12 +381,19 @@ void applyTextureToWall(Mat& img, Point* pts, int npts, const Mat& texture) {
     }
 }
 
-int main() {
+int main(int argc, char** argv) {
+    bool halloweenMode = false;
+    for(int i = 1; i < argc; ++i) {
+        if(string(argv[i]) == "--halloween") {
+            halloweenMode = true;
+        }
+    }
     // Inicializar y reproducir musica
     sf::SoundBuffer musicBuffer;
     std::unique_ptr<sf::Sound> music;
-    if(!musicBuffer.loadFromFile("sources/squiddy.wav")) {
-        std::cout << "Advertencia: no se pudo abrir sources/squiddy.wav" << std::endl;
+    string musicPath = halloweenMode ? "sources/Boo! Bitch! - Kim Petras.mp3" : "sources/squiddy.wav";
+    if(!musicBuffer.loadFromFile(musicPath)) {
+        std::cout << "Advertencia: no se pudo abrir " << musicPath << std::endl;
     } else {
         music = std::make_unique<sf::Sound>(musicBuffer);
         music->setLooping(true);
@@ -395,8 +421,8 @@ int main() {
     }
     
     // CREAR 2 JUGADORES
-    RobloxPlayer player1(-4.0, 0.0, 1);
-    RobloxPlayer player2(4.0, 0.0, 2);
+    RobloxPlayer player1(-4.0, 0.0, 1, halloweenMode);
+    RobloxPlayer player2(4.0, 0.0, 2, halloweenMode);
     
     // CREAR 30 PELOTAS cayendo del cielo
     vector<Ball> balls;
@@ -441,14 +467,16 @@ int main() {
                 // Parar musica antes de cambiar a siguiente ejecutable
                 if(music) { music->stop(); music.reset(); }
                 destroyAllWindows();
-                system("./arena2");
+                string cmd = halloweenMode ? "./arena2 --halloween" : "./arena2";
+                system(cmd.c_str());
                 return 0;
             } else {
                 // Ambos muertos, ir a game over
                 waitKey(2000);
                 if(music) { music->stop(); music.reset(); }
                 destroyAllWindows();
-                system("./end");
+                string cmdEnd = halloweenMode ? "./end --halloween" : "./end";
+                system(cmdEnd.c_str());
                 return 0;
             }
         }
@@ -790,7 +818,8 @@ int main() {
             imshow("SQUID GAMES", img);
             waitKey(2000); // 2 segundos
             destroyAllWindows();
-            system("./end");
+            string cmdEnd = halloweenMode ? "./end --halloween" : "./end";
+            system(cmdEnd.c_str());
             return 0;
         }
         

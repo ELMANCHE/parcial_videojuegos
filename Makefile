@@ -14,9 +14,6 @@ all: juegoroblox juego3d snake3d arena arena2 menu end
 menu: primeravista.cpp arena arena2 end
 	$(CXX) $(CXXFLAGS) primeravista.cpp -o menu $(OPENCV_FLAGS) $(SFML_FLAGS)
 
-arena2: arena2.cpp
-	$(CXX) $(CXXFLAGS) arena2.cpp -o arena2 $(OPENCV_FLAGS) $(SFML_FLAGS)
-
 end: end.cpp
 	$(CXX) $(CXXFLAGS) end.cpp -o end $(OPENCV_FLAGS) $(SFML_FLAGS)
 
@@ -55,16 +52,12 @@ run-arena: arena
 run-arena2: arena2
 	./arena2
 
-# Ejecutar juego completo con música
+# Ejecutar juego completo desde el menú
 play: menu
-	./play_game.sh
-
-# Detener música si sigue sonando
-stop-music:
-	./stop_music.sh
+	./menu
 
 # Limpiar ejecutables
 clean:
 	rm -f juegoroblox juego3d snake3d arena arena2 menu end
 
-.PHONY: all run run-juego run-snake run-arena run-arena2 play stop-music clean
+.PHONY: all run run-juego run-snake run-arena run-arena2 play clean

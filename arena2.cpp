@@ -5,6 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <random>
+#include <string>
 
 using namespace cv;
 using namespace std;
@@ -155,6 +156,7 @@ public:
     int getPlayerNum() const { return playerNum; }
     bool isMuerto() const { return muerto; }
     int getFramesDesdeRespawn() const { return framesDesdeRespawn; }
+    void incrementarFramesDesdeRespawn() { framesDesdeRespawn++; }
     V3 getPosicionMuerte() const { return posicionMuerte; }
     int getGridRow() const { return gridRow; }
     int getGridCol() const { return gridCol; }
@@ -167,22 +169,37 @@ public:
 class RobloxPlayer : public Personaje {
 private: //encapsulamiento
     Scalar colorCabeza, colorTorso, colorBrazo, colorPierna;
+    bool halloween;
 public:
-    RobloxPlayer(double x, double y, int playerNum, int startCol)
-        : Personaje(x, y, playerNum, startCol) {
+    RobloxPlayer(double x, double y, int playerNum, int startCol, bool halloweenMode = false)
+        : Personaje(x, y, playerNum, startCol), halloween(halloweenMode) {
         double tileHeight = 0.5;
         pos = {x, y, tileHeight + 0.4};
         targetPos = pos;
-        if(playerNum == 1) {
-            colorCabeza = Scalar(80, 220, 255);
-            colorTorso = Scalar(220, 180, 80);
-            colorBrazo = Scalar(80, 220, 255);
-            colorPierna = Scalar(80, 200, 80);
+        if(halloween) {
+            if(playerNum == 1) {
+                colorCabeza = Scalar(200, 200, 200);
+                colorTorso = Scalar(40, 40, 40);
+                colorBrazo = Scalar(210, 210, 210);
+                colorPierna = Scalar(30, 30, 30);
+            } else {
+                colorCabeza = Scalar(40, 140, 255);
+                colorTorso = Scalar(40, 40, 40);
+                colorBrazo = Scalar(200, 180, 120);
+                colorPierna = Scalar(50, 50, 50);
+            }
         } else {
-            colorCabeza = Scalar(80, 120, 255);
-            colorTorso = Scalar(180, 180, 180);
-            colorBrazo = Scalar(80, 160, 255);
-            colorPierna = Scalar(150, 80, 220);
+            if(playerNum == 1) {
+                colorCabeza = Scalar(80, 220, 255);
+                colorTorso = Scalar(220, 180, 80);
+                colorBrazo = Scalar(80, 220, 255);
+                colorPierna = Scalar(80, 200, 80);
+            } else {
+                colorCabeza = Scalar(80, 120, 255);
+                colorTorso = Scalar(180, 180, 180);
+                colorBrazo = Scalar(80, 160, 255);
+                colorPierna = Scalar(150, 80, 220);
+            }
         }
     }
 
@@ -372,13 +389,20 @@ void applyTextureToWall(Mat& img, Point* pts, int npts, const Mat& texture) {
     }
 }
 
-int main() {
+int main(int argc, char** argv) {
+    bool halloweenMode = false;
+    for(int i = 1; i < argc; ++i) {
+        if(string(argv[i]) == "--halloween") {
+            halloweenMode = true;
+        }
+    }
     // Initialize SFML audio
     std::unique_ptr<sf::SoundBuffer> buffer(new sf::SoundBuffer());
     std::unique_ptr<sf::Sound> music;
+    std::string musicPath = halloweenMode ? "./sources/Boo! Bitch! - Kim Petras.mp3" : "./sources/squiddy.wav";
     
-    if (!buffer->loadFromFile("./sources/squiddy.wav")) {
-        std::cout << "Error loading sound file" << std::endl;
+    if (!buffer->loadFromFile(musicPath)) {
+        std::cout << "Error loading sound file: " << musicPath << std::endl;
     } else {
         music.reset(new sf::Sound(*buffer));
         music->setLooping(true);
@@ -411,8 +435,8 @@ int main() {
     TileGrid grid;
     
     // CREAR 2 JUGADORES (empiezan en columna 0 y 1, fila 0)
-    RobloxPlayer player1(-1.5, -9.0, 1, 0);  // Columna izquierda
-    RobloxPlayer player2(1.5, -9.0, 2, 1);   // Columna derecha
+    RobloxPlayer player1(-1.5, -9.0, 1, 0, halloweenMode);  // Columna izquierda
+    RobloxPlayer player2(1.5, -9.0, 2, 1, halloweenMode);   // Columna derecha
     
     namedWindow("SQUID GAMES - Glass Bridge", WINDOW_AUTOSIZE);
     // setup mouse callback for single-view camera control
@@ -428,8 +452,8 @@ int main() {
     player2.actualizarMovimiento();
         
         // Actualizar contador de frames desde muerte
-    if(player1.isMuerto()) player1.framesDesdeRespawn++;
-    if(player2.isMuerto()) player2.framesDesdeRespawn++;
+    if(player1.isMuerto()) player1.incrementarFramesDesdeRespawn();
+    if(player2.isMuerto()) player2.incrementarFramesDesdeRespawn();
         
         // ===== LEER TECLAS =====
         int k = waitKey(30);
@@ -469,7 +493,8 @@ int main() {
             waitKey(3000);
             if(music) { music->stop(); music.reset(); }
             destroyAllWindows();
-            system("./end");
+            string endCmd = halloweenMode ? "./end --halloween" : "./end";
+            system(endCmd.c_str());
             return 0;
         }
     if(player2.getGridRow() >= TileGrid::ROWS - 1 && player2.estaVivo()) {
@@ -481,7 +506,8 @@ int main() {
             waitKey(3000);
             if(music) { music->stop(); music.reset(); }
             destroyAllWindows();
-            system("./end");
+            string endCmd = halloweenMode ? "./end --halloween" : "./end";
+            system(endCmd.c_str());
             return 0;
         }
         
@@ -493,7 +519,8 @@ int main() {
             waitKey(2000);
             if(music) { music->stop(); music.reset(); }
             destroyAllWindows();
-            system("./end");
+            string endCmd = halloweenMode ? "./end --halloween" : "./end";
+            system(endCmd.c_str());
             return 0;
         }
         

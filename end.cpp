@@ -47,12 +47,19 @@ void endMouseCallback(int event, int x, int y, int, void*) {
     }
 }
 
-int main() {
+int main(int argc, char** argv) {
+    bool halloweenMode = false;
+    for(int i = 1; i < argc; ++i) {
+        if(string(argv[i]) == "--halloween") {
+            halloweenMode = true;
+        }
+    }
     // Cargar y reproducir musica con SFML
     sf::SoundBuffer musicBuffer;
     std::unique_ptr<sf::Sound> music;
-    if(!musicBuffer.loadFromFile("sources/free.wav")) {
-        cerr << "Advertencia: No se pudo abrir sources/squiddy.wav" << endl;
+    string musicPath = halloweenMode ? "sources/Boo! Bitch! - Kim Petras.mp3" : "sources/free.wav";
+    if(!musicBuffer.loadFromFile(musicPath)) {
+        cerr << "Advertencia: No se pudo abrir " << musicPath << endl;
     } else {
         music = std::make_unique<sf::Sound>(musicBuffer);
         music->setLooping(true);
@@ -120,7 +127,8 @@ int main() {
             waitKey(500);
             if(music) { music->stop(); music.reset(); }
             destroyAllWindows();
-            system("./arena");
+            string cmd = halloweenMode ? "./arena --halloween" : "./arena";
+            system(cmd.c_str());
             return 0;
         } else if(clicked == 2) {
             running = false;
