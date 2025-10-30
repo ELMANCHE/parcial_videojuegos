@@ -1,0 +1,58 @@
+@startuml
+title Factory Method Pattern - Glass Bridge Game (Halloween Event System)
+
+class Main {
+  + main(argc, argv[])
+  - GameFactory* factory
+}
+
+class GameFactory <<abstract>> {
+  + crearJugador(x, y, playerNum, col): Personaje
+  + cargarMusica(): string
+}
+
+class Personaje <<abstract>> {
+  + int vida
+  + V3 pos
+  + bool halloween
+  --
+  + renderizar()
+  + recibirDanio()
+  + estaVivo(): bool
+}
+
+class NormalFactory {
+  + crearJugador(x, y, playerNum, col): Personaje
+  + cargarMusica(): string
+}
+
+class HalloweenFactory {
+  + crearJugador(x, y, playerNum, col): Personaje
+  + cargarMusica(): string
+}
+
+class RobloxPlayer {
+  + Scalar colorCabeza
+  + Scalar colorTorso
+  --
+  + RobloxPlayer(x, y, playerNum, startCol, halloweenMode)
+}
+
+note right of GameFactory : <<crea con\ncolores\nnormales>>
+
+note right of HalloweenFactory : <<crea con\ncolores\nHalloween>>
+
+' Relaciones de herencia
+GameFactory <|-- NormalFactory : <<extends>>
+GameFactory <|-- HalloweenFactory : <<extends>>
+Personaje <|-- RobloxPlayer : <<extends>>
+
+' Relaciones de creación
+NormalFactory ..> RobloxPlayer : <<crea con colores normales>>
+HalloweenFactory ..> RobloxPlayer : <<crea con colores Halloween>>
+
+' Relaciones de uso
+Main --> GameFactory : usa
+Main --> Personaje : maneja
+
+@enduml

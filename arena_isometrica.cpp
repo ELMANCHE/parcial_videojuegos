@@ -351,22 +351,32 @@ void drawDeathFlash(Mat& img, const RobloxPlayer& player, int w, int h, double z
     }
 }
 
-// Función para aplicar textura a un polígono (pared)
+// Función para aplicar textura a un polígono (pared) manteniendo proporción
 void applyTextureToWall(Mat& img, Point* pts, int npts, const Mat& texture) {
     if(texture.empty()) return;
     
     // Obtener el bounding box del polígono
     Rect bbox = boundingRect(vector<Point>(pts, pts + npts));
+    if(bbox.width <= 0 || bbox.height <= 0) return;
     
     // Crear máscara para el polígono
     Mat mask = Mat::zeros(img.size(), CV_8UC1);
     fillConvexPoly(mask, pts, npts, Scalar(255));
     
-    // Redimensionar textura al tamaño del bbox
-    Mat resizedTexture;
-    resize(texture, resizedTexture, bbox.size());
+    // Calcular escala manteniendo proporción (evita distorsión)
+    double scaleX = (double)bbox.width / texture.cols;
+    double scaleY = (double)bbox.height / texture.rows;
+    double scale = min(scaleX, scaleY);
     
-    // Aplicar la textura solo en el área del polígono
+    // Nuevas dimensiones manteniendo proporción
+    int newWidth = (int)(texture.cols * scale);
+    int newHeight = (int)(texture.rows * scale);
+    
+    // Redimensionar textura manteniendo proporción
+    Mat resizedTexture;
+    resize(texture, resizedTexture, Size(newWidth, newHeight));
+    
+    // Aplicar la textura repetida (tiling) si es más pequeña que el bbox
     for(int y = 0; y < bbox.height; y++) {
         for(int x = 0; x < bbox.width; x++) {
             int imgX = bbox.x + x;
@@ -374,7 +384,10 @@ void applyTextureToWall(Mat& img, Point* pts, int npts, const Mat& texture) {
             
             if(imgX >= 0 && imgX < img.cols && imgY >= 0 && imgY < img.rows) {
                 if(mask.at<uchar>(imgY, imgX) > 0) {
-                    img.at<Vec3b>(imgY, imgX) = resizedTexture.at<Vec3b>(y, x);
+                    // Usar tiling para repetir la textura
+                    int texX = x % newWidth;
+                    int texY = y % newHeight;
+                    img.at<Vec3b>(imgY, imgX) = resizedTexture.at<Vec3b>(texY, texX);
                 }
             }
         }
@@ -405,19 +418,40 @@ int main(int argc, char** argv) {
 
     double campoSize = 12.0;  // Tamaño del campo
     
-    // CARGAR TEXTURAS PARA LAS PAREDES Y PISO
-    Mat texturaPared1 = imread("sources/images-5.jpeg");
-    Mat texturaPared2 = imread("sources/images-6.jpeg");
-    Mat texturaPiso = imread("sources/piso.jpeg");
+    // CARGAR TEXTURAS PARA LAS PAREDES Y PISO CON SOPORTE HALLOWEEN
+    Mat texturaPared1, texturaPared2, texturaPiso;
+    
+    if(halloweenMode) {
+        // Cargar texturas de Halloween para primer nivel
+        texturaPared1 = imread("sources/hallowen1.jpg");
+        texturaPared2 = imread("sources/hallowen1.jpg");
+        texturaPiso = imread("sources/hallowenpisos.png");  // Piso de Halloween
+        
+        if(texturaPared1.empty()) {
+            cout << "Warning: No se pudo cargar sources/hallowen1.jpg, usando fallback" << endl;
+            // Fallback: usar texturas normales si Halloween no se encuentra
+            texturaPared1 = imread("sources/images-5.jpeg");
+            texturaPared2 = imread("sources/images-6.jpeg");
+        }
+        if(texturaPiso.empty()) {
+            cout << "Warning: No se pudo cargar sources/hallowenpisos.png, usando piso normal" << endl;
+            texturaPiso = imread("sources/piso.jpeg");  // Fallback al piso normal
+        }
+    } else {
+        // Cargar texturas normales
+        texturaPared1 = imread("sources/images-5.jpeg");
+        texturaPared2 = imread("sources/images-6.jpeg");
+        texturaPiso = imread("sources/piso.jpeg");
+    }
     
     if(texturaPared1.empty()) {
-        cout << "Error: No se pudo cargar sources/images-5.jpeg" << endl;
+        cout << "Warning: No se pudo cargar texturas de pared" << endl;
     }
     if(texturaPared2.empty()) {
-        cout << "Error: No se pudo cargar sources/images-6.jpeg" << endl;
+        cout << "Warning: No se pudo cargar texturas de pared" << endl;
     }
     if(texturaPiso.empty()) {
-        cout << "Error: No se pudo cargar sources/piso.jpeg" << endl;
+        cout << "Warning: No se pudo cargar textura de piso" << endl;
     }
     
     // CREAR 2 JUGADORES

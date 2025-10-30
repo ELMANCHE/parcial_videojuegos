@@ -72,6 +72,35 @@ struct Face3D {
     bool drawFace;
 };
 
+// Forward declarations
+class Personaje;
+class RobloxPlayer;
+
+// ABSTRACT FACTORY - GameFactory
+class GameFactory {
+public:
+    virtual ~GameFactory() = default;
+    virtual RobloxPlayer* crearJugador(double x, double y, int playerNum, int startCol) = 0;
+    virtual string cargarMusica() = 0;
+};
+
+// CONCRETE FACTORY 1 - NormalFactory
+class NormalFactory : public GameFactory {
+public:
+    RobloxPlayer* crearJugador(double x, double y, int playerNum, int startCol) override;
+    string cargarMusica() override {
+        return "./sources/squiddy.wav";
+    }
+};
+
+// CONCRETE FACTORY 2 - HalloweenFactory  
+class HalloweenFactory : public GameFactory {
+public:
+    RobloxPlayer* crearJugador(double x, double y, int playerNum, int startCol) override;
+    string cargarMusica() override {
+        return "./sources/Boo! Bitch! - Kim Petras.mp3";
+    }
+};
 
 // Clase base para Personaje herencia y polimorfismo
 class Personaje {
@@ -209,6 +238,15 @@ public:
     Scalar getColorBrazo() const { return colorBrazo; }
     Scalar getColorPierna() const { return colorPierna; }
 };
+
+// IMPLEMENTACIÓN DE LOS MÉTODOS FACTORY
+RobloxPlayer* NormalFactory::crearJugador(double x, double y, int playerNum, int startCol) {
+    return new RobloxPlayer(x, y, playerNum, startCol, false); // Halloween = false
+}
+
+RobloxPlayer* HalloweenFactory::crearJugador(double x, double y, int playerNum, int startCol) {
+    return new RobloxPlayer(x, y, playerNum, startCol, true); // Halloween = true
+}
 
 // Simple global mouse camera control (single view)
 bool g_mousePressed = false;
@@ -359,22 +397,32 @@ void drawDeathFlash(Mat& img, const Personaje& personaje, int w, int h, double z
     }
 }
 
-// Función para aplicar textura a un polígono (pared)
+// Función para aplicar textura a un polígono (pared) manteniendo proporción
 void applyTextureToWall(Mat& img, Point* pts, int npts, const Mat& texture) {
     if(texture.empty()) return;
     
     // Obtener el bounding box del polígono
     Rect bbox = boundingRect(vector<Point>(pts, pts + npts));
+    if(bbox.width <= 0 || bbox.height <= 0) return;
     
     // Crear máscara para el polígono
     Mat mask = Mat::zeros(img.size(), CV_8UC1);
     fillConvexPoly(mask, pts, npts, Scalar(255));
     
-    // Redimensionar textura al tamaño del bbox
-    Mat resizedTexture;
-    resize(texture, resizedTexture, bbox.size());
+    // Calcular escala manteniendo proporción (evita distorsión)
+    double scaleX = (double)bbox.width / texture.cols;
+    double scaleY = (double)bbox.height / texture.rows;
+    double scale = min(scaleX, scaleY);
     
-    // Aplicar la textura solo en el área del polígono
+    // Nuevas dimensiones manteniendo proporción
+    int newWidth = (int)(texture.cols * scale);
+    int newHeight = (int)(texture.rows * scale);
+    
+    // Redimensionar textura manteniendo proporción
+    Mat resizedTexture;
+    resize(texture, resizedTexture, Size(newWidth, newHeight));
+    
+    // Aplicar la textura repetida (tiling) si es más pequeña que el bbox
     for(int y = 0; y < bbox.height; y++) {
         for(int x = 0; x < bbox.width; x++) {
             int imgX = bbox.x + x;
@@ -382,7 +430,10 @@ void applyTextureToWall(Mat& img, Point* pts, int npts, const Mat& texture) {
             
             if(imgX >= 0 && imgX < img.cols && imgY >= 0 && imgY < img.rows) {
                 if(mask.at<uchar>(imgY, imgX) > 0) {
-                    img.at<Vec3b>(imgY, imgX) = resizedTexture.at<Vec3b>(y, x);
+                    // Usar tiling para repetir la textura
+                    int texX = x % newWidth;
+                    int texY = y % newHeight;
+                    img.at<Vec3b>(imgY, imgX) = resizedTexture.at<Vec3b>(texY, texX);
                 }
             }
         }
@@ -390,16 +441,26 @@ void applyTextureToWall(Mat& img, Point* pts, int npts, const Mat& texture) {
 }
 
 int main(int argc, char** argv) {
+    // FACTORY SELECTION - Determinar qué factory usar
     bool halloweenMode = false;
     for(int i = 1; i < argc; ++i) {
         if(string(argv[i]) == "--halloween") {
             halloweenMode = true;
         }
     }
-    // Initialize SFML audio
+    
+    // CREAR FACTORY APROPIADA
+    GameFactory* factory;
+    if(halloweenMode) {
+        factory = new HalloweenFactory();
+    } else {
+        factory = new NormalFactory();
+    }
+    
+    // USAR FACTORY PARA CARGAR MÚSICA
     std::unique_ptr<sf::SoundBuffer> buffer(new sf::SoundBuffer());
     std::unique_ptr<sf::Sound> music;
-    std::string musicPath = halloweenMode ? "./sources/Boo! Bitch! - Kim Petras.mp3" : "./sources/squiddy.wav";
+    std::string musicPath = factory->cargarMusica();
     
     if (!buffer->loadFromFile(musicPath)) {
         std::cout << "Error loading sound file: " << musicPath << std::endl;
@@ -420,23 +481,39 @@ int main(int argc, char** argv) {
         cerr << "Error: No se pudo cargar sources/vidrio.jpg" << endl;
     }
     
-    // CARGAR TEXTURAS PARA LAS PAREDES
-    Mat texturaPared1 = imread("sources/glass1.jpg");      // Pared derecha
-    Mat texturaPared2 = imread("sources/glass2.jpeg");     // Pared izquierda
+    // CARGAR TEXTURAS PARA LAS PAREDES CON SOPORTE HALLOWEEN
+    Mat texturaPared1, texturaPared2;
+    
+    if(halloweenMode) {
+        // Cargar texturas de Halloween para arena2
+        texturaPared1 = imread("sources/hallowen2.jpeg");      
+        texturaPared2 = imread("sources/hallowen2.jpeg");     
+        
+        if(texturaPared1.empty()) {
+            cerr << "Warning: No se pudo cargar sources/hallowen2.jpeg, usando fallback" << endl;
+            // Fallback: usar texturas normales si Halloween no se encuentra
+            texturaPared1 = imread("sources/glass1.jpg");
+            texturaPared2 = imread("sources/glass2.jpeg");
+        }
+    } else {
+        // Cargar texturas normales
+        texturaPared1 = imread("sources/glass1.jpg");      // Pared derecha
+        texturaPared2 = imread("sources/glass2.jpeg");     // Pared izquierda
+    }
     
     if(texturaPared1.empty()) {
-        cerr << "Error: No se pudo cargar sources/glass1.jpg" << endl;
+        cerr << "Warning: No se pudo cargar texturas de pared" << endl;
     }
     if(texturaPared2.empty()) {
-        cerr << "Error: No se pudo cargar sources/glass2.jpeg" << endl;
+        cerr << "Warning: No se pudo cargar texturas de pared" << endl;
     }
     
     // Crear el grid de trampas del puente de vidrio
     TileGrid grid;
     
-    // CREAR 2 JUGADORES (empiezan en columna 0 y 1, fila 0)
-    RobloxPlayer player1(-1.5, -9.0, 1, 0, halloweenMode);  // Columna izquierda
-    RobloxPlayer player2(1.5, -9.0, 2, 1, halloweenMode);   // Columna derecha
+    // USAR FACTORY PARA CREAR JUGADORES
+    RobloxPlayer* player1 = factory->crearJugador(-1.5, -9.0, 1, 0);  // Columna izquierda
+    RobloxPlayer* player2 = factory->crearJugador(1.5, -9.0, 2, 1);   // Columna derecha
     
     namedWindow("SQUID GAMES - Glass Bridge", WINDOW_AUTOSIZE);
     // setup mouse callback for single-view camera control
@@ -448,12 +525,12 @@ int main(int argc, char** argv) {
     // Single-view rendering: all drawing happens into `img` below
         
         // ===== ACTUALIZAR MOVIMIENTOS DE JUGADORES =====
-    player1.actualizarMovimiento();
-    player2.actualizarMovimiento();
+    player1->actualizarMovimiento();
+    player2->actualizarMovimiento();
         
         // Actualizar contador de frames desde muerte
-    if(player1.isMuerto()) player1.incrementarFramesDesdeRespawn();
-    if(player2.isMuerto()) player2.incrementarFramesDesdeRespawn();
+    if(player1->isMuerto()) player1->incrementarFramesDesdeRespawn();
+    if(player2->isMuerto()) player2->incrementarFramesDesdeRespawn();
         
         // ===== LEER TECLAS =====
         int k = waitKey(30);
@@ -462,29 +539,29 @@ int main(int argc, char** argv) {
         else if(k == '-' || k == '_') zoom = max(10.0, zoom - 2);
         
         // ===== CONTROLES JUGADOR 1 (WASD - movimiento discreto en grid) =====
-        if(player1.estaVivo() && !player1.isEnMovimiento()) {
+        if(player1->estaVivo() && !player1->isEnMovimiento()) {
             if(k == 'w' || k == 'W') {  // Avanzar recto
-                player1.intentarMovimiento(player1.getGridRow() + 1, player1.getGridCol(), grid);
+                player1->intentarMovimiento(player1->getGridRow() + 1, player1->getGridCol(), grid);
             } else if(k == 'a' || k == 'A') {  // Diagonal izquierda-adelante
-                player1.intentarMovimiento(player1.getGridRow() + 1, player1.getGridCol() - 1, grid);
+                player1->intentarMovimiento(player1->getGridRow() + 1, player1->getGridCol() - 1, grid);
             } else if(k == 'd' || k == 'D') {  // Diagonal derecha-adelante
-                player1.intentarMovimiento(player1.getGridRow() + 1, player1.getGridCol() + 1, grid);
+                player1->intentarMovimiento(player1->getGridRow() + 1, player1->getGridCol() + 1, grid);
             }
         }
         
         // ===== CONTROLES JUGADOR 2 (IJKL - movimiento discreto en grid) =====
-        if(player2.estaVivo() && !player2.isEnMovimiento()) {
+        if(player2->estaVivo() && !player2->isEnMovimiento()) {
             if(k == 'i' || k == 'I') {  // Avanzar recto
-                player2.intentarMovimiento(player2.getGridRow() + 1, player2.getGridCol(), grid);
+                player2->intentarMovimiento(player2->getGridRow() + 1, player2->getGridCol(), grid);
             } else if(k == 'j' || k == 'J') {  // Diagonal izquierda-adelante
-                player2.intentarMovimiento(player2.getGridRow() + 1, player2.getGridCol() - 1, grid);
+                player2->intentarMovimiento(player2->getGridRow() + 1, player2->getGridCol() - 1, grid);
             } else if(k == 'l' || k == 'L') {  // Diagonal derecha-adelante
-                player2.intentarMovimiento(player2.getGridRow() + 1, player2.getGridCol() + 1, grid);
+                player2->intentarMovimiento(player2->getGridRow() + 1, player2->getGridCol() + 1, grid);
             }
         }
         
         // ===== VERIFICAR VICTORIA =====
-    if(player1.getGridRow() >= TileGrid::ROWS - 1 && player1.estaVivo()) {
+    if(player1->getGridRow() >= TileGrid::ROWS - 1 && player1->estaVivo()) {
             putText(img, "JUGADOR 1 GANA!", Point(W/2 - 200, H/2), 
                     FONT_HERSHEY_COMPLEX, 2, Scalar(0, 255, 0), 3);
             putText(img, "Has completado el desafio!", Point(W/2 - 200, H/2 + 60), 
@@ -495,9 +572,11 @@ int main(int argc, char** argv) {
             destroyAllWindows();
             string endCmd = halloweenMode ? "./end --halloween" : "./end";
             system(endCmd.c_str());
+            // Cleanup
+            delete player1; delete player2; delete factory;
             return 0;
         }
-    if(player2.getGridRow() >= TileGrid::ROWS - 1 && player2.estaVivo()) {
+    if(player2->getGridRow() >= TileGrid::ROWS - 1 && player2->estaVivo()) {
             putText(img, "JUGADOR 2 GANA!", Point(W/2 - 200, H/2), 
                     FONT_HERSHEY_COMPLEX, 2, Scalar(0, 255, 0), 3);
             putText(img, "Has completado el desafio!", Point(W/2 - 200, H/2 + 60), 
@@ -508,11 +587,13 @@ int main(int argc, char** argv) {
             destroyAllWindows();
             string endCmd = halloweenMode ? "./end --halloween" : "./end";
             system(endCmd.c_str());
+            // Cleanup
+            delete player1; delete player2; delete factory;
             return 0;
         }
         
         // Si ambos mueren, game over
-    if(player1.isMuerto() && player2.isMuerto()) {
+    if(player1->isMuerto() && player2->isMuerto()) {
             putText(img, "GAME OVER", Point(W/2 - 150, H/2), 
                     FONT_HERSHEY_COMPLEX, 2, Scalar(0, 0, 255), 3);
             imshow("SQUID GAMES - Glass Bridge", img);
@@ -521,6 +602,8 @@ int main(int argc, char** argv) {
             destroyAllWindows();
             string endCmd = halloweenMode ? "./end --halloween" : "./end";
             system(endCmd.c_str());
+            // Cleanup
+            delete player1; delete player2; delete factory;
             return 0;
         }
         
@@ -664,11 +747,11 @@ int main(int argc, char** argv) {
         
         // RENDERIZAR PERSONAJES 3D
         vector<Face3D> allFaces;
-        if(player1.estaVivo()) {
-            renderRobloxPlayer(allFaces, player1, W, H, zoom);
+        if(player1->estaVivo()) {
+            renderRobloxPlayer(allFaces, *player1, W, H, zoom);
         }
-        if(player2.estaVivo()) {
-            renderRobloxPlayer(allFaces, player2, W, H, zoom);
+        if(player2->estaVivo()) {
+            renderRobloxPlayer(allFaces, *player2, W, H, zoom);
         }
         
         // Ordenar por profundidad
@@ -701,19 +784,19 @@ int main(int argc, char** argv) {
         }
         
         // ===== DESTELLOS DE MUERTE =====
-        if(player1.isMuerto()) {
-            drawDeathFlash(img, player1, W, H, zoom);
+        if(player1->isMuerto()) {
+            drawDeathFlash(img, *player1, W, H, zoom);
         }
-        if(player2.isMuerto()) {
-            drawDeathFlash(img, player2, W, H, zoom);
+        if(player2->isMuerto()) {
+            drawDeathFlash(img, *player2, W, H, zoom);
         }
         
         // ===== BARRAS DE VIDA =====
-        if(player1.estaVivo()) {
-            drawHealthBar(img, player1, W, H, zoom);
+        if(player1->estaVivo()) {
+            drawHealthBar(img, *player1, W, H, zoom);
         }
-        if(player2.estaVivo()) {
-            drawHealthBar(img, player2, W, H, zoom);
+        if(player2->estaVivo()) {
+            drawHealthBar(img, *player2, W, H, zoom);
         }
         
         // HUD
@@ -734,6 +817,10 @@ int main(int argc, char** argv) {
     imshow("SQUID GAMES - Glass Bridge", img);
     }
     
+    // Cleanup
+    delete player1;
+    delete player2;
+    delete factory;
     return 0;
 }
 

@@ -1,6 +1,6 @@
 # Ejecutable unificado menú + juego
 squid: primeravista.cpp arena_isometrica.cpp
-	$(CXX) $(CXXFLAGS) primeravista.cpp arena_isometrica.cpp -o squid $(OPENCV_FLAGS)
+	$(CXX) $(CXXFLAGS) primeravista.cpp arena_isometrica.cpp -o squid $(OPENCV_FLAGS) $(SFML_FLAGS)
 # Makefile para compilar juegos 3D con OpenCV
 
 CXX = g++
